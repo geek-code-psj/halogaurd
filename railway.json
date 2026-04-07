@@ -6,7 +6,7 @@
   },
   "deploy": {
     "numReplicas": 1,
-    "startCommand": "node shared-core/dist/server.js"
+    "startCommand": "npx tsx shared-core/src/server.ts"
   },
   "plugins": [
     {
