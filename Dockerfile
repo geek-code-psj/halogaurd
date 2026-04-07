@@ -5,6 +5,9 @@ FROM node:20-alpine AS node-builder
 
 WORKDIR /app
 
+# Install system dependencies (openssl required for Prisma)
+RUN apk add --no-cache openssl
+
 # Install dependencies
 COPY package*.json turbo.json ./
 COPY shared-core/package*.json shared-core/
@@ -47,6 +50,9 @@ CMD ["npm", "run", "dev"]
 FROM node:20-alpine AS production
 
 WORKDIR /app
+
+# Install system dependencies (openssl required for Prisma)
+RUN apk add --no-cache openssl
 
 # Install only production dependencies
 COPY package*.json turbo.json ./
