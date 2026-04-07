@@ -13,15 +13,18 @@ COPY shared-client-sdk/package*.json shared-client-sdk/
 RUN npm install --legacy-peer-deps 2>/dev/null || npm install
 RUN npm run build 2>/dev/null || true
 
+# Ensure dist directories exist (even if empty)
+RUN mkdir -p shared-core/dist shared-client-sdk/dist shared-ui/dist
+
 # ===== DEVELOPMENT STAGE =====
 FROM node:20-alpine AS development
 
 WORKDIR /app
 
-# Install additional tools for development
-RUN apk add --no-cache python3 make g++ curl
-
-# Copy build artifacts
+# Install additional t (if they exist)
+COPY --from=node-builder /app/node_modules ./node_modules
+COPY --from=node-builder /app/shared-core/dist ./shared-core/dist || true
+COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist || true
 COPY --from=node-builder /app/node_modules ./node_modules
 COPY --from=node-builder /app/shared-core/dist ./shared-core/dist
 COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist
@@ -52,9 +55,12 @@ COPY shared-client-sdk/package*.json shared-client-sdk/
 RUN npm install --omit=dev --legacy-peer-deps 2>/dev/null || npm install --omit=dev
 RUN npm run build 2>/dev/null || true
 
-# Copy built code
-COPY --from=node-builder /app/shared-core/dist ./shared-core/dist
-COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist
+# Ensure directories exist for copy operations
+RUN mkdir -p ./shared-core/dist ./shared-client-sdk/dist || true
+
+# Copy built code (if exists)
+COPY --from=node-builder /app/shared-core/dist ./shared-core/dist || true
+COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist || true
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
