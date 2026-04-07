@@ -51,12 +51,13 @@ COPY shared-core/package*.json shared-core/
 COPY shared-client-sdk/package*.json shared-client-sdk/
 
 RUN npm install --omit=dev --legacy-peer-deps 2>/dev/null || npm install --omit=dev
-RUN npm run build || echo "Production build completed"
 
-# Copy build artifacts from builder
+# Copy node_modules from builder (pre-built with all deps)
 COPY --from=node-builder /app/node_modules ./node_modules
-COPY --from=node-builder /app/shared-core/dist ./shared-core/dist
-COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist
+
+# Copy source files for tsx runtime execution
+COPY shared-core ./shared-core
+COPY shared-client-sdk ./shared-client-sdk
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -70,4 +71,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 EXPOSE 3000
 
-CMD ["node", "shared-core/dist/server.js"]
+CMD ["npx", "tsx", "shared-core/src/server.ts"]
