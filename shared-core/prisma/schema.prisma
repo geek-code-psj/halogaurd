@@ -14,6 +14,7 @@ datasource db {
 model Session {
   id              String   @id @default(cuid())
   userId          String?  // Optional: for authenticated users
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   platform        String   // ChatGPT, Claude, Gemini, etc.
   tabId           Int?     // Browser tab ID (Chrome extension)
   conversationId  String?  // Platform-specific conversation ID
@@ -114,12 +115,15 @@ model UserFeedback {
 model ApiUsage {
   id              String   @id @default(cuid())
   
+  // References
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
   // API details
   endpoint        String
   method          String   // GET, POST, etc.
   
   // Request info
-  userId          String?
   platform        String?
   
   // Response info
