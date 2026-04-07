@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode/
+.idea/
+.turbo/
+.next/
+out/
+coverage/
+.vitest/
+.cache/
+redis-data/
+postgres-data/
+
+# Archive (historical files excluded from main repo)
+archive/
+
+# Lock files (regenerate from package.json)
+package-lock.json
+
+# Build artifacts
+*.vsix
+*.crx
+*.zip

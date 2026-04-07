@@ -1,0 +1,32 @@
+{
+  "name": "haloguard",
+  "version": "0.1.0",
+  "description": "Multi-platform anti-hallucination extension for AI chat platforms",
+  "private": true,
+  "workspaces": [
+    "shared-core",
+    "shared-ui",
+    "shared-client-sdk",
+    "vscode-extension",
+    "chrome-extension"
+  ],
+  "scripts": {
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "test": "turbo run test",
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "dev:backend": "cd shared-core && npm run dev",
+    "dev:docker": "docker-compose up -d",
+    "preview": "turbo run preview"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.0",
+    "turbo": "^1.11.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
+  },
+  "packageManager": "npm@10.2.3"
+}

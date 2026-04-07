@@ -1,0 +1,334 @@
+// Prisma schema for HaloGuard
+// Database: PostgreSQL (Supabase)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User sessions for tracking conversations
+model Session {
+  id              String   @id @default(cuid())
+  userId          String?  // Optional: for authenticated users
+  platform        String   // ChatGPT, Claude, Gemini, etc.
+  tabId           Int?     // Browser tab ID (Chrome extension)
+  conversationId  String?  // Platform-specific conversation ID
+  
+  // Analysis metadata
+  messageCount    Int      @default(0)
+  issueCount      Int      @default(0)
+  totalScore      Float    @default(0.0)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastActiveAt    DateTime @default(now())
+  
+  // Relations
+  analysisResults AnalysisResult[]
+  feedback        UserFeedback[]
+  
+  @@index([userId])
+  @@index([platform])
+  @@index([lastActiveAt])
+  @@map("sessions")
+}
+
+// Individual analysis results
+model AnalysisResult {
+  id              String   @id @default(cuid())
+  
+  // References
+  sessionId       String
+  session         Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  // Content
+  content         String   @db.Text
+  contentHash     String   @unique // For caching
+  model           String   // Model version used
+  
+  // Detection results
+  flagged         Boolean
+  overallScore    Float    // 0-100
+  latency         Int      // milliseconds
+  
+  // Tier results (stored as JSON)
+  tier0Result     Json?    // Syntax checks
+  tier1Result     Json?    // Language model
+  tier2Result     Json?    // Fact-checking
+  tier3Result     Json?    // NLI model
+  tier4Result     Json?    // Async analysis
+  
+  // Issues found
+  issues          Json     // Array of detected issues
+  issueCount      Int      @default(0)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  // Relations
+  feedback        UserFeedback?
+  
+  @@index([sessionId])
+  @@index([contentHash])
+  @@index([flagged])
+  @@index([createdAt])
+  @@map("analysis_results")
+}
+
+// User feedback for model improvement
+model UserFeedback {
+  id              String   @id @default(cuid())
+  
+  // References
+  sessionId       String
+  session         Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  analysisId      String?  @unique
+  analysis        AnalysisResult? @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  
+  // Feedback type
+  feedbackType    String   // "false_positive", "false_negative", "incorrect_severity"
+  accurate        Boolean? // Was the detection accurate?
+  severity        String?  // Actual severity if different
+  
+  // Comments
+  comment         String?  @db.Text
+  
+  // Corrections
+  correction      String?  @db.Text // Correct version of content
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  @@index([sessionId])
+  @@index([feedbackType])
+  @@index([createdAt])
+  @@map("user_feedback")
+}
+
+// API usage tracking (for rate limiting & analytics)
+model ApiUsage {
+  id              String   @id @default(cuid())
+  
+  // API details
+  endpoint        String
+  method          String   // GET, POST, etc.
+  
+  // Request info
+  userId          String?
+  platform        String?
+  
+  // Response info
+  statusCode      Int
+  latency         Int      // milliseconds
+  cached          Boolean  @default(false)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  @@index([endpoint])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("api_usage")
+}
+
+// Configuration for platforms & settings
+model Config {
+  id              String   @id @default(cuid())
+  
+  // Config keys
+  key             String   @unique
+  value           Json?    // Flexible config values
+  
+  // Metadata
+  updatedBy       String?  // User ID who updated
+  updatedAt       DateTime @updatedAt
+  
+  @@map("configs")
+}
+
+// Cache for external API responses
+model ApiCache {
+  id              String   @id @default(cuid())
+  
+  // Cache key
+  key             String   @unique
+  source          String   // "wikipedia", "wikidata", "fact_check_api"
+  
+  // Cached data
+  data            Json
+  
+  // TTL
+  expiresAt       DateTime
+  
+  // Stats
+  hitCount        Int      @default(0)
+  createdAt       DateTime @default(now())
+  
+  @@index([expiresAt])
+  @@index([source])
+  @@index([createdAt])
+  @@map("api_cache")
+}
+
+// Model performance metrics (for optimization tracking)
+model ModelMetrics {
+  id              String   @id @default(cuid())
+  
+  // Model info
+  model           String   // "nli", "fact_check", "combined"
+  
+  // Metrics
+  accuracy        Float    // Accuracy on test set
+  precision       Float    // Precision
+  recall          Float    // Recall
+  f1Score         Float    // F1 score
+  
+  // Performance
+  avgLatency      Int      // milliseconds
+  p90Latency      Int      // 90th percentile
+  p99Latency      Int      // 99th percentile
+  
+  // Sample size
+  sampleCount     Int      @default(0)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  @@index([model])
+  @@index([createdAt])
+  @@map("model_metrics")
+}
+
+// ============ PHASE 3 EPIC 4: LICENSING & SUBSCRIPTION MODELS ============
+
+// User accounts with subscription management
+model User {
+  id              String   @id @default(cuid())
+  
+  // User info
+  email           String   @unique
+  name            String?
+  avatar          String?
+  
+  // Authentication
+  passwordHash    String?  // Optional if using OAuth
+  
+  // Stripe integration
+  stripeCustomerId    String? @unique
+  
+  // Premium features
+  subscription    Subscription?
+  
+  // Audit trail
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastLoginAt     DateTime?
+  
+  // Relations
+  sessions        Session[]
+  billingHistory  BillingHistory[]
+  apiUsage        ApiUsage[]
+  
+  @@map("users")
+}
+
+// User subscription tiers
+model Subscription {
+  id              String   @id @default(cuid())
+  
+  // References
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Tier information
+  tier            String   @default("free") // free, pro, enterprise
+  status          String   @default("active") // active, cancelled, past_due
+  
+  // Stripe integration
+  stripeSubscriptionId  String?
+  stripePriceId   String?
+  
+  // Usage tracking
+  apiCallsUsed    Int      @default(0)
+  maxApiCalls     Int      @default(100)
+  
+  // Dates
+  activeUntil     DateTime?
+  renewalDate     DateTime?
+  cancelledAt     DateTime?
+  
+  // Metadata
+  cancellationReason  String?
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([tier])
+  @@index([status])
+  @@index([activeUntil])
+  @@map("user_subscriptions")
+}
+
+// Billing history / Invoices
+model BillingHistory {
+  id              String   @id @default(cuid())
+  
+  // References
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Invoice details
+  amount          Float    // Amount in currency
+  currency        String   @default("USD")
+  status          String   // "draft", "sent", "paid", "void", "uncollectible"
+  description     String   // e.g., "Professional - Annual"
+  
+  // Stripe integration
+  stripeInvoiceId String? @unique
+  stripePaymentIntentId  String?
+  
+  // Billing period
+  billingPeriodStart DateTime?
+  billingPeriodEnd DateTime?
+  
+  // Failure retry
+  failedAttempts  Int      @default(0)
+  nextRetryAt     DateTime?
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  paidAt          DateTime?
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("billing_history")
+}
+
+// Premium features / Knowledge base
+model PremiumFeature {
+  id              String   @id @default(cuid())
+  
+  // Feature info
+  name            String   @unique // "kb_search", "ai_insights", "batch_analysis"
+  description     String?
+  
+  // Tier eligibility
+  freeTier        Boolean  @default(false)
+  proTier         Boolean  @default(true)
+  enterpriseTier  Boolean  @default(true)
+  
+  // Config
+  quotaPerMonth   Int?     // null = unlimited
+  
+  @@map("premium_features")
+}
+

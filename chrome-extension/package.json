@@ -1,0 +1,26 @@
+{
+  "name": "haloguard-chrome",
+  "displayName": "HaloGuard - AI Safety Monitor",
+  "description": "Real-time hallucination detection for ChatGPT, Claude, Gemini, and more",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc && webpack --mode production",
+    "dev": "tsc && webpack --mode development --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.260",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@vitejs/plugin-react": "^4.2.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

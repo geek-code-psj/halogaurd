@@ -1,0 +1,105 @@
+{
+  "manifest_version": 3,
+  "name": "HaloGuard - Hallucination Detector",
+  "description": "Real-time AI hallucination detection for ChatGPT, Claude, Gemini, and 8+ platforms",
+  "version": "0.2.0",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://copilot.microsoft.com/*",
+    "https://perplexity.ai/*",
+    "https://grok.com/*",
+    "https://x.com/grok/*",
+    "https://meta.ai/*",
+    "https://deepseek.com/*",
+    "https://pi.ai/*"
+  ],
+  "background": {
+    "service_worker": "dist/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://copilot.microsoft.com/*",
+        "https://perplexity.ai/*",
+        "https://grok.com/*",
+        "https://x.com/grok/*",
+        "https://meta.ai/*",
+        "https://deepseek.com/*",
+        "https://pi.ai/*"
+      ],
+      "js": ["dist/content/index.js"],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "HaloGuard - Check for hallucinations",
+    "default_popup": "dist/popup/index.html",
+    "default_icon": {
+      "16": "images/icon-16.png",
+      "48": "images/icon-48.png",
+      "128": "images/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon-16.png",
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Cmd+Shift+H",
+        "windows": "Ctrl+Shift+H"
+      }
+    }
+  }
+}
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://copilot.microsoft.com/*",
+        "https://perplexity.ai/*",
+        "https://grok.com/*",
+        "https://meta.ai/*",
+        "https://deepseek.com/*"
+      ],
+      "js": [
+        "src/content/index.ts"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "HaloGuard Safety Monitor",
+    "default_icon": {
+      "16": "resources/icon-16.png",
+      "48": "resources/icon-48.png",
+      "128": "resources/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "resources/icon-16.png",
+    "48": "resources/icon-48.png",
+    "128": "resources/icon-128.png"
+  }
+}

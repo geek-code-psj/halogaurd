@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HaloGuard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🛡️ HaloGuard</h1>
+      <p class="subtitle">Hallucination Detection</p>
+    </div>
+
+    <div id="status" class="status healthy" style="display: none;">
+      <span id="statusIcon">✅</span>
+      <span id="statusText">Extension Active</span>
+    </div>
+
+    <div id="backend-status" class="backend-status">
+      <span id="backendIcon">⏳</span>
+      <span id="backendText">Checking backend...</span>
+    </div>
+
+    <div class="settings-group">
+      <label class="toggle">
+        <input type="checkbox" id="autoAnalyze">
+        <span class="toggle-label">Auto-analyze messages</span>
+      </label>
+
+      <label class="toggle">
+        <input type="checkbox" id="showBadge">
+        <span class="toggle-label">Show badge for issues</span>
+      </label>
+
+      <label class="toggle">
+        <input type="checkbox" id="darkMode">
+        <span class="toggle-label">Dark mode</span>
+      </label>
+    </div>
+
+    <div class="settings-group">
+      <label for="threshold">Detection Threshold:</label>
+      <div class="slider-container">
+        <input type="range" id="threshold" min="0" max="100" value="50" class="slider">
+        <span id="thresholdValue">50%</span>
+      </div>
+      <p class="setting-hint">Higher = fewer false positives, Lower = more sensitive</p>
+    </div>
+
+    <div class="settings-group">
+      <label for="backendUrl">Backend URL:</label>
+      <input type="text" id="backendUrl" placeholder="http://localhost:3000" class="input">
+      <p class="setting-hint">Leave empty for default</p>
+    </div>
+
+    <div class="actions">
+      <button id="saveBtn" class="button button-primary">Save Settings</button>
+      <button id="clearCacheBtn" class="button button-secondary">Clear Cache</button>
+      <button id="openDocsBtn" class="button button-secondary">📖 Docs</button>
+    </div>
+
+    <div id="stats" class="stats" style="display: none;">
+      <h3>Session Stats</h3>
+      <p>Total analyses: <strong id="analysisCount">0</strong></p>
+      <p>Issues detected: <strong id="issueCount">0</strong></p>
+    </div>
+
+    <footer>
+      <p>Version 0.2.0</p>
+      <p><a href="#">Report Issue</a> | <a href="#">Settings</a></p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
