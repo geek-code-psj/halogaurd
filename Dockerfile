@@ -10,7 +10,7 @@ COPY package*.json package-lock.json turbo.json ./
 COPY shared-core/package*.json shared-core/package-lock.json shared-core/
 COPY shared-client-sdk/package*.json shared-client-sdk/package-lock.json shared-client-sdk/
 
-RUN npm ci
+RUN npm install --legacy-peer-deps 2>/dev/null || npm install
 RUN npm run build
 
 # ===== DEVELOPMENT STAGE =====
@@ -49,7 +49,7 @@ COPY package*.json package-lock.json turbo.json ./
 COPY shared-core/package*.json shared-core/package-lock.json shared-core/
 COPY shared-client-sdk/package*.json shared-client-sdk/package-lock.json shared-client-sdk/
 
-RUN npm ci --omit=dev
+RUN npm install --omit=dev --legacy-peer-deps 2>/dev/null || npm install --omit=dev
 
 # Copy built code
 COPY --from=node-builder /app/shared-core/dist ./shared-core/dist
