@@ -71,9 +71,6 @@ COPY --from=node-builder /app/node_modules ./node_modules
 COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
-# Create .env for runtime (Railway environment variables will override this at startup)
-RUN echo "DATABASE_URL=postgresql://user:pass@localhost:5432/db" > .env
-
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
