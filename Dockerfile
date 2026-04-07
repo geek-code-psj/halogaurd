@@ -6,9 +6,9 @@ FROM node:20-alpine AS node-builder
 WORKDIR /app
 
 # Install dependencies
-COPY package*.json turbo.json ./
-COPY shared-core/package*.json shared-core/
-COPY shared-client-sdk/package*.json shared-client-sdk/
+COPY package*.json package-lock.json turbo.json ./
+COPY shared-core/package*.json shared-core/package-lock.json shared-core/
+COPY shared-client-sdk/package*.json shared-client-sdk/package-lock.json shared-client-sdk/
 
 RUN npm ci
 RUN npm run build
@@ -27,7 +27,7 @@ COPY --from=node-builder /app/shared-core/dist ./shared-core/dist
 COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist
 
 # Copy source files
-COPY package*.json turbo.json ./
+COPY package*.json package-lock.json turbo.json ./
 COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
@@ -45,9 +45,9 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 # Install only production dependencies
-COPY package*.json turbo.json ./
-COPY shared-core/package*.json shared-core/
-COPY shared-client-sdk/package*.json shared-client-sdk/
+COPY package*.json package-lock.json turbo.json ./
+COPY shared-core/package*.json shared-core/package-lock.json shared-core/
+COPY shared-client-sdk/package*.json shared-client-sdk/package-lock.json shared-client-sdk/
 
 RUN npm ci --omit=dev
 
