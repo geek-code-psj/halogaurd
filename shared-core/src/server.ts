@@ -55,6 +55,13 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Redis client
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379/0';
+
+// Validate Redis URL format
+if (!redisUrl.startsWith('redis://') && !redisUrl.startsWith('rediss://')) {
+  logger.error(`Invalid REDIS_URL format: ${redisUrl}. Must start with redis:// or rediss://`);
+  logger.error('Make sure REDIS_URL environment variable is set correctly in Railway Variables');
+}
+
 const redis = Redis.createClient({ url: redisUrl });
 
 redis.on('error', (err) => logger.error('Redis Client Error', err));
