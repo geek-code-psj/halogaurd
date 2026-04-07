@@ -34,7 +34,7 @@ Tier 3: NLI (~300-600ms async) → Contradiction detection
 Tier 4: Semantic Memory (unbounded async) → Context drift & inconsistency
 ```
 
-**Performance**: P90 latency <500ms with strict fallback guarantees.
+**Performance**: P90 latency target <500ms with strict fallback guarantees.
 
 ---
 
@@ -60,29 +60,22 @@ Tier 4: Semantic Memory (unbounded async) → Context drift & inconsistency
 
 ## �️ Get HaloGuard
 
-Available on multiple platforms — all with free trial access:
+Available on multiple platforms:
 
-| Platform | Status | Link | Try Free |
-|----------|--------|------|----------|
-| **VS Code** | ✅ Published | [Marketplace](https://marketplace.visualstudio.com/items?itemName=geek-code-psj.haloguard) | ✓ All features |
-| **Chrome** | ✅ Published | [Web Store](https://chrome.google.com/webstore/detail/haloguard) | ✓ All features |
-| **NPM SDK** | ✅ Published | [@geek-code-psj/halogaurd-sdk](https://www.npmjs.com/package/@geek-code-psj/halogaurd-sdk) | ✓ All features |
-| **Self-Hosted** | ✅ Ready | [Docker/Railway](#docker-deployment) | ✓ Free tier |
+| Platform | Status | Details |
+|----------|--------|---------|
+| **Self-Hosted (Docker)** | ✅ Ready | Run locally with `docker-compose up -d` |
+| **Self-Hosted (Railway)** | ✅ Ready | Connect GitHub repo for auto-deployment |
+| **VS Code Extension** | 🔄 Coming Soon | In development (Phase 2) |
+| **Chrome Extension** | 🔄 Coming Soon | In development (Phase 2) |
+| **NPM SDK** | 🔄 Coming Soon | Package ready, publishing coming soon |
 
-### Quick Install
+### Quick Start
 
 ```bash
-# VS Code Extension
-# Search "HaloGuard" in Extensions → Install
-
-# Chrome Extension  
-# Visit Chrome Web Store → Add to Chrome
-
-# NPM Package
-npm install @geek-code-psj/halogaurd-sdk
-
-# Docker / Self-Hosted
+# Clone and run with Docker
 git clone https://github.com/geek-code-psj/halogaurd.git
+cd halogaurd
 docker-compose up -d
 ```
 

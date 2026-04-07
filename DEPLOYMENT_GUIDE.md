@@ -42,30 +42,42 @@ Complete step-by-step guide for deploying HaloGuard across multiple platforms an
 
 ## Pre-Deployment Setup
 
+### ⚠️ CRITICAL: Never Commit Secrets
+
+The `.env`, `.env.production`, and `.env.*.local` files are in `.gitignore` for critical security reasons:
+- Database passwords
+- API keys (JWT, Stripe, etc.)
+- Webhook secrets
+- Service credentials
+
+**If you accidentally commit secrets:**
+1. Revoke all keys immediately
+2. Use `git filter-branch` to remove from history
+3. Rotate all credentials in production
+
 ### 1. Environment Configuration
 
-Create `.env.production` in the project root:
+Create `.env.production` locally (NEVER commit):
 
 ```bash
-# Database
-DATABASE_URL=postgresql://user:password@host:5432/halogaurd_db
+# Database - get actual credentials from your database provider
+DATABASE_URL=$DATABASE_URL
 
-# Redis
-REDIS_URL=redis://localhost:6379
+# Redis - get from Redis provider or Docker
+REDIS_URL=$REDIS_URL
 
-# Stripe (Licensing)
-STRIPE_SECRET_KEY=sk_live_xxxxx
-STRIPE_PUBLISHABLE_KEY=pk_live_xxxxx
-STRIPE_WEBHOOK_SECRET=whsec_xxxxx
-
-# API Keys
-JWT_SECRET=your_jwt_secret_key_here
-API_KEY=your_api_key_here
+# API Keys - generate strong random values
+JWT_SECRET=$JWT_SECRET
+API_KEY=$API_KEY
 
 # App Settings
 NODE_ENV=production
 LOG_LEVEL=info
 ```
+
+**Railway Deployment**: Set these values in Railway Dashboard → Environment Variables. Do NOT paste keys into local `.env` files.
+
+**Local Docker**: Use `.env` file with restricted permissions (chmod 600).
 
 ### 2. Verify Build
 
@@ -323,12 +335,14 @@ npm install @geek-code-psj/halogaurd-sdk
 
 ### Usage Documentation
 
-Create `.npmrc` for best practices:
+Keep `.npmrc` minimal and standard:
 
 ```
-shamefully-hoist=true
-strict-peer-dependencies=false
+# Leave this empty if using npm 7+
+# npm handles hoisting automatically
 ```
+
+Users should use standard npm configuration.
 
 ### Marketplace Details
 - **URL**: https://www.npmjs.com/package/@geek-code-psj/halogaurd-sdk
@@ -363,17 +377,24 @@ Railway is an all-in-one platform for deploying and managing Node.js apps.
 
 #### Step 3: Configure Environment Variables
 
-In Railway dashboard, add for `shared-core` service:
+In Railway dashboard → Environment Variables, set only these (Stripe not implemented yet):
 
 ```
 NODE_ENV=production
-DATABASE_URL=postgresql://user:pass@hostname:5432/db
-REDIS_URL=redis://localhost:6379
-STRIPE_SECRET_KEY=sk_live_xxxxx
-STRIPE_WEBHOOK_SECRET=whsec_xxxxx
-JWT_SECRET=your_jwt_secret
+DATABASE_URL=$DATABASE_URL
+REDIS_URL=$REDIS_URL
+JWT_SECRET=$JWT_SECRET
+API_KEY=$API_KEY
 LOG_LEVEL=info
 ```
+
+**Generate JWT_SECRET and API_KEY:**
+```bash
+node -e "console.log('JWT:', require('crypto').randomBytes(32).toString('hex'))"
+node -e "console.log('API:', require('crypto').randomBytes(16).toString('hex'))"
+```
+
+**Note**: Do NOT add Stripe keys until Phase 3 payment flow is implemented. Live API keys sitting idle are an attack surface.
 
 #### Step 4: Add Database & Cache
 
@@ -417,23 +438,30 @@ docker-compose build python-worker
 
 #### Step 2: Configure Environment
 
-Create `.env` file:
+⚠️ **Create `.env` file locally ONLY (never commit):**
 
 ```
 # Backend
 NODE_ENV=production
-DATABASE_URL=postgresql://postgres:password@db:5432/halogaurd
-REDIS_URL=redis://cache:6379
-STRIPE_SECRET_KEY=sk_live_xxxxx
-JWT_SECRET=your_secret
+DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/halogaurd
+REDIS_URL=redis://:${REDIS_PASSWORD}@cache:6379
+JWT_SECRET=${JWT_SECRET}
+API_KEY=${API_KEY}
 
 # Database
-POSTGRES_PASSWORD=secure_password
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 POSTGRES_DB=halogaurd
 
 # Redis
-REDIS_PASSWORD=cache_password
+REDIS_PASSWORD=${REDIS_PASSWORD}
 ```
+
+**Generate strong passwords locally:**
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Substitute the output for `${POSTGRES_PASSWORD}` and `${REDIS_PASSWORD}`.
 
 #### Step 3: Start Services
 
