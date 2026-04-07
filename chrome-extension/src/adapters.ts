@@ -138,7 +138,7 @@ export function extractMessageFromElement(el: Element, adapter: typeof ChatGPTAd
       timestamp: Date.now(),
     };
   } catch (error) {
-    console.warn('[HaloGuard] Error extracting message:', error);
+    // Silently fail - do not log extraction errors to console in production
     return null;
   }
 }

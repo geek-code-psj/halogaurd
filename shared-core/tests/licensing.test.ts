@@ -9,6 +9,8 @@ import { StripeWebhookHandler } from '../src/licensing/stripe-webhook';
 import { getDb } from '../src/databases/db-manager';
 import Stripe from 'stripe';
 
+// ⚠️ NOTE: Licensing tests require STRIPE_TEST_KEY environment variable
+// Get from: https://dashboard.stripe.com/test/apikeys
 const db = getDb();
 
 describe('License Manager', () => {

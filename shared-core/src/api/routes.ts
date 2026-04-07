@@ -1,9 +1,18 @@
 /**
  * Express API Routes for HaloGuard Detection
+ * 
+ * HTTP Status Codes:
+ * - 200: Success
+ * - 400: Invalid request (missing/invalid parameters)
+ * - 401: Unauthorized (missing or invalid authentication token)
+ * - 429: Rate limit exceeded (too many requests)
+ * - 500: Internal server error
+ * - 503: Service unavailable (dependency failure)
  */
 
 import express, { Router, Request, Response } from "express";
-import { v4 as uuidv4 } from "crypto";
+import { v4 as uuidv4 } from "uuid";
+import { requireAuth } from "../middleware/auth";
 import {
   runDetectionPipeline,
   processAsyncDetection,
@@ -21,10 +30,11 @@ export function setDetectionQueue(queue: Queue) {
 }
 
 /**
- * POST /api/detect
- * Main detection endpoint
+ * POST /api/v1/analyze
+ * Main hallucination detection endpoint
+ * Requires bearer token authentication
  */
-router.post("/detect", async (req: Request, res: Response) => {
+router.post("/api/v1/analyze", requireAuth, async (req: Request, res: Response) => {
   try {
     const { content, model, context, conversationHistory, metadata } = req.body;
 
@@ -57,15 +67,39 @@ router.post("/detect", async (req: Request, res: Response) => {
     res.json(response);
   } catch (error: any) {
     console.error("Detection error:", error);
-    res.status(500).json({ error: "Detection failed", message: error.message });
+    
+    // Check for specific error conditions
+    if (error.message && error.message.includes("rate limit")) {
+      return res.status(429).json({ 
+        error: "Rate limit exceeded", 
+        message: "Too many requests. Please retry after some time.",
+        retryAfter: 60
+      });
+    }
+    
+    // Service unavailable (e.g., queue failure, external service down)
+    if (error.message && error.message.includes("unavailable")) {
+      return res.status(503).json({ 
+        error: "Service unavailable", 
+        message: "Detection service is temporarily unavailable. Please try again later."
+      });
+    }
+    
+    // Default internal server error
+    res.status(500).json({ 
+      error: "Detection failed", 
+      message: error.message || "Unknown error occurred" 
+    });
   }
 });
 
 /**
- * POST /api/detect/batch
- * Batch detection for multiple items
+ * POST /api/v1/analyze/batch
+ * Batch hallucination detection for multiple items
+ * Requires bearer token authentication
+ * Maximum 100 items per batch request
  */
-router.post("/detect/batch", async (req: Request, res: Response) => {
+router.post("/api/v1/analyze/batch", requireAuth, async (req: Request, res: Response) => {
   try {
     const { items } = req.body;
 
@@ -79,8 +113,26 @@ router.post("/detect/batch", async (req: Request, res: Response) => {
         .json({ error: "Maximum 100 items per batch request" });
     }
 
-    const requests = items.map((item: any) => ({
-      id: uuidv4(),
+    // Check for specific error conditions
+    if (error.message && error.message.includes("rate limit")) {
+      return res.status(429).json({ 
+        error: "Rate limit exceeded", 
+        message: "Too many requests. Please retry after some time.",
+        retryAfter: 60
+      });
+    }
+    
+    if (error.message && error.message.includes("unavailable")) {
+      return res.status(503).json({ 
+        error: "Service unavailable", 
+        message: "Detection service is temporarily unavailable. Please try again later."
+      });
+    }
+    
+    res.status(500).json({ 
+      error: "Batch detection failed", 
+      message: error.message || "Unknown error occurred" 
+   
       content: item.content,
       model: item.model || "unknown",
       timestamp: Date.now(),
@@ -107,10 +159,10 @@ router.post("/detect/batch", async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/health
+ * GET /api/v1/health
  * Health check endpoint
  */
-router.get("/health", (req: Request, res: Response) => {
+router.get("/api/v1/health", (req: Request, res: Response) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
@@ -119,10 +171,10 @@ router.get("/health", (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/stats
- * Detection statistics
+ * GET /api/v1/stats
+ * Detection statistics and metrics
  */
-router.get("/stats", (req: Request, res: Response) => {
+router.get("/api/v1/stats", (req: Request, res: Response) => {
   // In production, would fetch from database
   res.json({
     totalDetections: 0,
