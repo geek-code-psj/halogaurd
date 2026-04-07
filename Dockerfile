@@ -15,6 +15,9 @@ COPY shared-client-sdk/package*.json shared-client-sdk/
 COPY shared-core/src ./shared-core/src
 COPY shared-core/prisma ./shared-core/prisma
 
+# Create .env with placeholder DATABASE_URL for prisma generate at build time
+RUN echo "DATABASE_URL=postgresql://user:pass@localhost:5432/db" > .env
+
 RUN npm install --legacy-peer-deps 2>/dev/null || npm install
 RUN cd shared-core && npx prisma generate && cd ..
 RUN npm run build || echo "Build completed"
@@ -67,6 +70,9 @@ COPY --from=node-builder /app/node_modules ./node_modules
 # Copy source files for tsx runtime execution
 COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
+
+# Create .env for runtime (Railway environment variables will override this at startup)
+RUN echo "DATABASE_URL=postgresql://user:pass@localhost:5432/db" > .env
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
