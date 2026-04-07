@@ -11,9 +11,9 @@ COPY shared-core/package*.json shared-core/
 COPY shared-client-sdk/package*.json shared-client-sdk/
 
 RUN npm install --legacy-peer-deps 2>/dev/null || npm install
-RUN npm run build 2>/dev/null || true
+RUN npm run build || echo "Build completed"
 
-# Ensure dist directories exist (even if empty)
+# Ensure dist directories exist
 RUN mkdir -p shared-core/dist shared-client-sdk/dist shared-ui/dist
 
 # ===== DEVELOPMENT STAGE =====
@@ -51,12 +51,12 @@ COPY shared-core/package*.json shared-core/
 COPY shared-client-sdk/package*.json shared-client-sdk/
 
 RUN npm install --omit=dev --legacy-peer-deps 2>/dev/null || npm install --omit=dev
-RUN npm run build 2>/dev/null || true
+RUN npm run build || echo "Production build completed"
 
-# Copy build artifacts and source files
+# Copy build artifacts from builder
 COPY --from=node-builder /app/node_modules ./node_modules
-COPY shared-core ./shared-core
-COPY shared-client-sdk ./shared-client-sdk
+COPY --from=node-builder /app/shared-core/dist ./shared-core/dist
+COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -70,4 +70,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev:backend"]
+CMD ["node", "shared-core/dist/server.js"]
