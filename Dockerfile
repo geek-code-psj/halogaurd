@@ -9,10 +9,11 @@ WORKDIR /app
 COPY package*.json turbo.json ./
 COPY shared-core/package*.json shared-core/
 COPY shared-client-sdk/package*.json shared-client-sdk/
+COPY shared-core/src ./shared-core/src
 COPY shared-core/prisma ./shared-core/prisma
 
 RUN npm install --legacy-peer-deps 2>/dev/null || npm install
-RUN npx prisma generate --schema=shared-core/prisma/schema.prisma
+RUN cd shared-core && npx prisma generate && cd ..
 RUN npm run build || echo "Build completed"
 
 # Ensure dist directories exist
