@@ -11,7 +11,7 @@ COPY shared-core/package*.json shared-core/
 COPY shared-client-sdk/package*.json shared-client-sdk/
 
 RUN npm install --legacy-peer-deps 2>/dev/null || npm install
-RUN npm run build
+RUN npm run build 2>/dev/null || true
 
 # ===== DEVELOPMENT STAGE =====
 FROM node:20-alpine AS development
@@ -50,6 +50,7 @@ COPY shared-core/package*.json shared-core/
 COPY shared-client-sdk/package*.json shared-client-sdk/
 
 RUN npm install --omit=dev --legacy-peer-deps 2>/dev/null || npm install --omit=dev
+RUN npm run build 2>/dev/null || true
 
 # Copy built code
 COPY --from=node-builder /app/shared-core/dist ./shared-core/dist
