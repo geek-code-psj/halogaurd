@@ -21,13 +21,11 @@ FROM node:20-alpine AS development
 
 WORKDIR /app
 
-# Install additional t (if they exist)
+# Install additional tools for development
+RUN apk add --no-cache python3 make g++ curl
+
+# Copy build artifacts
 COPY --from=node-builder /app/node_modules ./node_modules
-COPY --from=node-builder /app/shared-core/dist ./shared-core/dist || true
-COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist || true
-COPY --from=node-builder /app/node_modules ./node_modules
-COPY --from=node-builder /app/shared-core/dist ./shared-core/dist
-COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist
 
 # Copy source files
 COPY package*.json turbo.json ./
@@ -55,12 +53,10 @@ COPY shared-client-sdk/package*.json shared-client-sdk/
 RUN npm install --omit=dev --legacy-peer-deps 2>/dev/null || npm install --omit=dev
 RUN npm run build 2>/dev/null || true
 
-# Ensure directories exist for copy operations
-RUN mkdir -p ./shared-core/dist ./shared-client-sdk/dist || true
-
-# Copy built code (if exists)
-COPY --from=node-builder /app/shared-core/dist ./shared-core/dist || true
-COPY --from=node-builder /app/shared-client-sdk/dist ./shared-client-sdk/dist || true
+# Copy build artifacts and source files
+COPY --from=node-builder /app/node_modules ./node_modules
+COPY shared-core ./shared-core
+COPY shared-client-sdk ./shared-client-sdk
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -74,4 +70,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 EXPOSE 3000
 
-CMD ["node", "shared-core/dist/server.js"]
+CMD ["npm", "run", "dev:backend"]
