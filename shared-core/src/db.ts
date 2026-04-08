@@ -57,7 +57,7 @@ export async function initializeDatabase(throwOnFailure: boolean = false): Promi
     const sharedCorePath = await import('path').then(p => p.join(__dirname, '..'));
     
     try {
-      execSync('npx prisma migrate deploy --skip-generate', {
+      execSync('npx prisma migrate deploy', {
         cwd: sharedCorePath,
         stdio: 'pipe',
         encoding: 'utf-8',

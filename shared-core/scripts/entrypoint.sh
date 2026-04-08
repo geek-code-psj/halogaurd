@@ -41,7 +41,7 @@ pwd
 ls -la prisma/ 2>/dev/null || echo "  (prisma dir not visible)"
 
 # Run migration with explicit error handling
-if npx prisma migrate deploy --skip-generate; then
+if npx prisma migrate deploy; then
   echo "[SUCCESS] Migrations completed"
 else
   EXIT_CODE=$?
