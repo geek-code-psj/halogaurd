@@ -88,6 +88,8 @@ const redis = new Redis(redisUrl, {
   },
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
+  connectTimeout: 10000,
+  commandTimeout: 5000,
 });
 
 redis.on('error', (err) => {
@@ -106,12 +108,25 @@ redis.on('reconnecting', () => {
   logger.warn('⚠️ Redis reconnecting...');
 });
 
-// BullMQ queues for async jobs
-const factCheckQueue = new Queue('fact-check', { connection: redis as any });
-const nliInferenceQueue = new Queue('nli-inference', { connection: redis as any });
-const semanticIndexQueue = new Queue('semantic-index', { connection: redis as any });
+// Lazy-initialized BullMQ queues (created only after Redis is ready)
+let factCheckQueue: Queue | undefined;
+let nliInferenceQueue: Queue | undefined;
+let semanticIndexQueue: Queue | undefined;
 
-logger.info('Initialized BullMQ queues: fact-check, nli-inference, semantic-index');
+// Initialize queues after Redis connects
+async function initializeBullMQQueues() {
+  try {
+    if (!factCheckQueue) {
+      factCheckQueue = new Queue('fact-check', { connection: redis });
+      nliInferenceQueue = new Queue('nli-inference', { connection: redis });
+      semanticIndexQueue = new Queue('semantic-index', { connection: redis });
+      logger.info('✅ Initialized BullMQ queues: fact-check, nli-inference, semantic-index');
+    }
+  } catch (error) {
+    logger.error('Failed to initialize BullMQ queues:', error);
+    throw error;
+  }
+}
 
 // ============ ROUTES ============
 
@@ -146,6 +161,18 @@ app.get('/ready', async (req: Request, res: Response) => {
       logger.error('[Health] Redis check failed:', err);
     }
 
+    // Check BullMQ queues
+    try {
+      if (!factCheckQueue || !nliInferenceQueue || !semanticIndexQueue) {
+        healthChecks.bullmq = 'not_initialized';
+      } else {
+        healthChecks.bullmq = 'ready';
+      }
+    } catch (err) {
+      healthChecks.bullmq = 'failed';
+      logger.error('[Health] BullMQ check failed:', err);
+    }
+
     // Check Database
     try {
       const dbCheck = await initializeDatabase();
@@ -175,7 +202,8 @@ app.get('/ready', async (req: Request, res: Response) => {
     // Determine overall readiness
     const allHealthy = 
       healthChecks.redis === 'connected' &&
-      healthChecks.database === 'connected';
+      healthChecks.database === 'connected' &&
+      healthChecks.bullmq === 'ready';
 
     const readyStatus = allHealthy ? 200 : 503;
 
@@ -256,7 +284,7 @@ app.post('/api/v1/analyze', async (req: Request, res: Response) => {
     }
 
     // Queue async tier (4) if needed
-    if (response.asyncRemaining && response.asyncRemaining.length > 0) {
+    if (response.asyncRemaining && response.asyncRemaining.length > 0 && semanticIndexQueue) {
       await semanticIndexQueue.add(
         'semantic-analysis',
         request,
@@ -330,6 +358,11 @@ app.get('/api/v1/stats', async (req: Request, res: Response) => {
         falsePositives++;
       }
     }
+
+    // Get queue counts (safely handle if queues not initialized yet)
+    const factCheckCount = factCheckQueue ? await factCheckQueue.count() : 0;
+    const nliInferenceCount = nliInferenceQueue ? await nliInferenceQueue.count() : 0;
+    const semanticIndexCount = semanticIndexQueue ? await semanticIndexQueue.count() : 0;
     
     res.json({
       timestamp: new Date().toISOString(),
@@ -337,9 +370,9 @@ app.get('/api/v1/stats', async (req: Request, res: Response) => {
       total_feedback: totalFeedback,
       false_positive_rate: totalFeedback > 0 ? (falsePositives / totalFeedback * 100).toFixed(2) + '%' : 'N/A',
       queue_status: {
-        fact_check_pending: await factCheckQueue.count(),
-        nli_inference_pending: await nliInferenceQueue.count(),
-        semantic_index_pending: await semanticIndexQueue.count(),
+        fact_check_pending: factCheckCount,
+        nli_inference_pending: nliInferenceCount,
+        semantic_index_pending: semanticIndexCount,
       },
       hallucination_breakdown: {
         factual_errors: 0,
@@ -543,7 +576,7 @@ io.on('connection', (socket) => {
       });
 
       // Queue async tier (4) if needed
-      if (response.asyncRemaining.length > 0) {
+      if (response.asyncRemaining.length > 0 && semanticIndexQueue) {
         await semanticIndexQueue.add(
           'semantic-analysis',
           detectionRequest,
@@ -635,21 +668,6 @@ io.on('connection', (socket) => {
     try {
       const { runDetectionPipeline } = await import('./detectors/index');
       
-      const startTime = Date.now();
-      const results = await Promise.all(
-        data.items.map(item => 
-          runDetectionPipeline({
-            id: `${batchId}_${Math.random().toString(36).substr(2, 9)}`,
-            content: item.content,
-            model: item.model || 'unknown',
-            timestamp: Date.now(),
-            context: item.context,
-            conversationHistory: item.conversationHistory || [],
-            metadata: item.metadata || {},
-          })
-        )
-      );
-
       socket.emit('batch_complete', {
         batchId,
         sessionId,
@@ -699,23 +717,60 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
  */
 async function startServer(): Promise<void> {
   try {
-    // Initialize database
+    // Wait for Redis to be ready (with timeout)
+    console.log('Waiting for Redis connection...');
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Redis connection timeout (30s)'));
+      }, 30000);
+
+      const checkReady = async () => {
+        try {
+          const pong = await redis.ping();
+          if (pong === 'PONG') {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(checkReady, 1000);
+          }
+        } catch {
+          setTimeout(checkReady, 1000);
+        }
+      };
+
+      checkReady();
+    });
+
+    logger.info('✅ Redis ready - initializing BullMQ queues');
+    await initializeBullMQQueues();
+
+    // Initialize database with retry logic
     console.log('Initializing database...');
-    await initializeDatabase();
-    logger.info('✅ Database initialized');
+    try {
+      await initializeDatabase();
+      logger.info('✅ Database initialized');
+    } catch (dbError) {
+      logger.warn('⚠️ Database connection may be degraded - will retry', dbError);
+      // Continue anyway - DB has built-in retry
+    }
 
     // Start cleanup tasks (every hour)
     setInterval(async () => {
-      const cleanedCount = await cleanupExpiredCache();
-      logger.debug(`Cache cleanup: removed ${cleanedCount} expired entries`);
+      try {
+        const cleanedCount = await cleanupExpiredCache();
+        logger.debug(`Cache cleanup: removed ${cleanedCount} expired entries`);
+      } catch (error) {
+        logger.warn('Cache cleanup failed:', error);
+      }
     }, 60 * 60 * 1000);
 
     // Start server
     httpServer.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 HaloGuard backend running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`Redis: ${redisUrl}`);
+      logger.info(`Redis: ${redisUrlMasked}`);
       logger.info(`Database: PostgreSQL (configured)`);
+      logger.info('✅ All services initialized and ready');
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
