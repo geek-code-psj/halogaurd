@@ -70,16 +70,26 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Redis client
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379/0';
 
+// Log Redis URL status (mask password for security)
+const redisUrlMasked = redisUrl.replace(/:[^@]*@/, ':***@');
+logger.info(`Redis URL: ${redisUrlMasked}`);
+
 // Validate Redis URL format
 if (!redisUrl.startsWith('redis://') && !redisUrl.startsWith('rediss://')) {
-  logger.error(`Invalid REDIS_URL format: ${redisUrl}. Must start with redis:// or rediss://`);
+  logger.error(`Invalid REDIS_URL format: ${redisUrlMasked}. Must start with redis:// or rediss://`);
   logger.error('Make sure REDIS_URL environment variable is set correctly in Railway Variables');
 }
 
 const redis = Redis.createClient({ url: redisUrl });
 
-redis.on('error', (err) => logger.error('Redis Client Error', err));
-redis.connect().catch((err) => logger.error('Failed to connect Redis', err));
+redis.on('error', (err) => {
+  const errMsg = (err as Error).message || String(err);
+  if (errMsg.includes('WRONGPASS')) {
+    logger.error('Redis authentication failed - check password encoding in REDIS_URL');
+  }
+  logger.error('Redis Client Error:', errMsg);
+});
+redis.connect().catch((err) => logger.error('Failed to connect Redis:', (err as Error).message));
 
 // BullMQ queues for async jobs
 const factCheckQueue = new Queue('fact-check', { connection: redis as any });
