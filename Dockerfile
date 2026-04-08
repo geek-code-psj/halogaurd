@@ -72,6 +72,7 @@ COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
 # Copy and set up entrypoint script
+RUN mkdir -p /app/scripts
 COPY shared-core/scripts/entrypoint.sh /app/scripts/entrypoint.sh
 RUN chmod +x /app/scripts/entrypoint.sh
 

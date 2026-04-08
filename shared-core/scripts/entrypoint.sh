@@ -7,52 +7,53 @@ set -e
 echo "================================================"
 echo "HaloGuard Production Entrypoint"
 echo "================================================"
+echo "Node version: $(node --version)"
+echo "NPM version: $(npm --version)"
 
 # Validate DATABASE_URL
 if [ -z "$DATABASE_URL" ]; then
-  echo "[ERROR] DATABASE_URL environment variable is NOT set"
-  echo "[ERROR] Set DATABASE_URL in Railway Variables"
+  echo "[FATAL] DATABASE_URL environment variable is NOT set"
   exit 1
 fi
-
-echo "[INFO] DATABASE_URL is set ✓"
+echo "[OK] DATABASE_URL is configured"
 
 # Validate REDIS_URL  
 if [ -z "$REDIS_URL" ]; then
-  echo "[ERROR] REDIS_URL environment variable is NOT set"
-  echo "[ERROR] Set REDIS_URL in Railway Variables"
+  echo "[FATAL] REDIS_URL environment variable is NOT set"
   exit 1
 fi
+echo "[OK] REDIS_URL is configured"
 
-echo "[INFO] REDIS_URL is set ✓"
-
-# Run database migrations BEFORE server starts
-echo "[INFO] Starting database migrations..."
-echo "[INFO] Command: cd /app/shared-core && npx prisma migrate deploy"
-
-cd /app/shared-core
-
-if npx prisma migrate deploy --skip-generate; then
-  echo "[SUCCESS] ✅ Migrations completed successfully"
-else
-  MIGRATE_EXIT=$?
-  echo "[ERROR] ❌ Migrations failed with exit code: $MIGRATE_EXIT"
-  echo "[ERROR] Database schema was not applied - cannot start server"
+# Check if Prisma CLI is available
+if ! command -v npx &> /dev/null; then
+  echo "[FATAL] npx command not found"
   exit 1
 fi
+echo "[OK] npx is available"
 
-# Verify tables were created
-echo "[INFO] Verifying database schema..."
-cd /app
-
-if npx tsx shared-core/src/migrate.ts; then
-  echo "[SUCCESS] ✅ Schema verification passed"
-else
-  echo "[WARN] ⚠️  Schema verification had issues but starting server"
-fi
-
-echo "[INFO] Starting HaloGuard server..."
+# Run database migrations
+echo "================================================"
+echo "Running Prisma migrations..."
 echo "================================================"
 
-# Start the actual server
+cd /app/shared-core
+pwd
+ls -la prisma/ 2>/dev/null || echo "  (prisma dir not visible)"
+
+# Run migration with explicit error handling
+if npx prisma migrate deploy --skip-generate; then
+  echo "[SUCCESS] Migrations completed"
+else
+  EXIT_CODE=$?
+  echo "[FATAL] Prisma migration failed with exit code $EXIT_CODE"
+  exit 1
+fi
+
+echo "================================================"
+echo "Starting HaloGuard server..."
+echo "================================================"
+
+cd /app
+
+# Start the server
 exec npx tsx shared-core/src/server.ts
