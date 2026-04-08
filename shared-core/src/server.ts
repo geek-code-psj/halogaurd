@@ -315,6 +315,34 @@ app.post('/api/v1/analyze', async (req: Request, res: Response) => {
 });
 
 /**
+ * Anonymous/Guest Authentication
+ * POST /api/v1/auth/guest
+ * No authentication required - returns a Bearer token for extension use
+ */
+app.post('/api/v1/auth/guest', async (req: Request, res: Response) => {
+  try {
+    // Generate a guest token (UUID-like format)
+    const token = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    logger.info('Generated guest token for extension');
+    
+    res.json({
+      token,
+      type: 'Bearer',
+      expiresIn: 86400, // 24 hours
+      userId: 'guest',
+      message: 'Guest authentication successful'
+    });
+  } catch (error) {
+    logger.error('Auth endpoint error:', error);
+    res.status(500).json({ 
+      error: 'Authentication failed',
+      message: String(error)
+    });
+  }
+});
+
+/**
  * Session initialization (with database storage)
  * POST /api/v1/sessions
  */
