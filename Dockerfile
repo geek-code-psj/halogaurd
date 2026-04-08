@@ -71,9 +71,8 @@ COPY --from=node-builder /app/node_modules ./node_modules
 COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
-# Create .env fallback (Railway env vars will override if set)
-RUN echo 'DATABASE_URL=postgresql://postgres:uFKvZ1hERXpOykvN@db.ozlhebnzmoqvawyrwida.supabase.co:5432/postgres?sslmode=require' > .env && \
-    echo 'REDIS_URL=redis://default:cQJY0yvSYXIVqP2FaaTFpFgnGih5cAw1@redis-11350.crce182.ap-south-1-1.ec2.cloud.redislabs.com:11350' >> .env
+# Note: DATABASE_URL and REDIS_URL must be set via Railway environment variables
+# DO NOT commit credentials in code or Dockerfile
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
