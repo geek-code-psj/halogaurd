@@ -23,6 +23,19 @@ import {
 // Load environment variables
 dotenv.config();
 
+// Initialize logger (MUST be before any logger.* calls)
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  transport: {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+    },
+  },
+});
+
+const httpLogger = pinoHttp({ logger });
+
 // Debug: Log DATABASE_URL status
 if (process.env.DATABASE_URL) {
   logger.info(`DATABASE_URL is set (length: ${process.env.DATABASE_URL.length} chars)`);
@@ -36,19 +49,6 @@ if (process.env.REDIS_URL) {
 } else {
   logger.warn('REDIS_URL environment variable is NOT set');
 }
-
-// Initialize logger
-const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-    },
-  },
-});
-
-const httpLogger = pinoHttp({ logger });
 
 // Initialize Express app
 const app = express();
