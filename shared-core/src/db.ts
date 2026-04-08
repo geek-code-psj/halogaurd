@@ -44,7 +44,7 @@ export const prisma = new Proxy({} as PrismaClient, {
  * Database initialization and connection check with retry logic
  * Gracefully handles connection failures - warns but doesn't crash
  */
-export async function initializeDatabase(): Promise<void> {
+export async function initializeDatabase(throwOnFailure: boolean = false): Promise<boolean> {
   const MAX_RETRIES = 10;
   const INITIAL_DELAY = 1000; // 1 second
 
@@ -53,24 +53,32 @@ export async function initializeDatabase(): Promise<void> {
       // Test the connection
       await prisma.$executeRaw`SELECT 1`;
       console.log('✅ Database connection established');
-      return; // Success!
+      return true; // Success!
     } catch (error) {
+      const errorMsg = (error as Error).message || String(error);
+      
       if (attempt === MAX_RETRIES) {
-        // Final attempt failed - warn but don't crash
+        // Final attempt failed
         console.error('❌ Failed to connect to database after', MAX_RETRIES, 'attempts');
-        console.error('Database error:', (error as Error).message);
-        console.warn('⚠️  Server will start without database - check Railway environment variables');
-        return; // Don't throw - allow server to start
+        console.error('Database error:', errorMsg);
+        console.warn('⚠️  Database connection failed - check Railway environment variables');
+        
+        if (throwOnFailure) {
+          throw error;
+        }
+        return false; // Indicate failure but don't crash
       }
 
       // Calculate exponential backoff delay
       const delay = INITIAL_DELAY * Math.pow(2, attempt - 1);
-      console.warn(`⚠️  Connection attempt ${attempt}/${MAX_RETRIES} failed, retrying in ${delay}ms...`);
+      console.warn(`⚠️  Connection attempt ${attempt}/${MAX_RETRIES} failed (${errorMsg}), retrying in ${delay}ms...`);
       
       // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
+  
+  return false;
 }
 
 /**
@@ -125,39 +133,49 @@ export async function getOrCreateSession(
   conversationId?: string,
   userId?: string
 ): Promise<string> {
-  // Try to find existing active session
-  if (tabId) {
-    const existing = await prisma.session.findFirst({
-      where: {
-        tabId,
-        platform,
-        lastActiveAt: {
-          gt: new Date(Date.now() - 12 * 60 * 60 * 1000), // Last 12 hours
+  try {
+    // Try to find existing active session
+    if (tabId) {
+      const existing = await prisma.session.findFirst({
+        where: {
+          tabId,
+          platform,
+          lastActiveAt: {
+            gt: new Date(Date.now() - 12 * 60 * 60 * 1000), // Last 12 hours
+          },
         },
+      });
+
+      if (existing) {
+        // Update last active time
+        await prisma.session.update({
+          where: { id: existing.id },
+          data: { lastActiveAt: new Date() },
+        });
+        return existing.id;
+      }
+    }
+
+    // Create new session
+    const session = await prisma.session.create({
+      data: {
+        platform,
+        tabId,
+        conversationId,
+        userId,
       },
     });
 
-    if (existing) {
-      // Update last active time
-      await prisma.session.update({
-        where: { id: existing.id },
-        data: { lastActiveAt: new Date() },
-      });
-      return existing.id;
-    }
-  }
-
-  // Create new session
-  const session = await prisma.session.create({
-    data: {
+    return session.id;
+  } catch (error: any) {
+    console.error('Database error in getOrCreateSession:', {
+      error: error?.message,
+      code: error?.code,
       platform,
       tabId,
-      conversationId,
-      userId,
-    },
-  });
-
-  return session.id;
+    });
+    throw error;
+  }
 }
 
 /**

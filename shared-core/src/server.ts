@@ -175,8 +175,8 @@ app.get('/ready', async (req: Request, res: Response) => {
 
     // Check Database
     try {
-      const dbCheck = await initializeDatabase();
-      healthChecks.database = 'connected';
+      const dbConnected = await initializeDatabase();
+      healthChecks.database = dbConnected ? 'connected' : 'disconnected';
     } catch (err) {
       healthChecks.database = 'failed';
       logger.error('[Health] Database check failed:', err);
@@ -310,12 +310,16 @@ app.post('/api/v1/sessions', async (req: Request, res: Response) => {
   try {
     const { platform, tabId, conversationId, userId } = req.body;
 
+    logger.debug(`Creating session: platform=${platform}, tabId=${tabId}`);
+
     const sessionId = await getOrCreateSession(
       platform || 'unknown',
       tabId,
       conversationId,
       userId
     );
+
+    logger.debug(`Session ID created: ${sessionId}`);
 
     // Also store in Redis for fast access
     await redis.hset(`session:${sessionId}`, {
@@ -330,9 +334,14 @@ app.post('/api/v1/sessions', async (req: Request, res: Response) => {
       platform,
       created_at: new Date().toISOString(),
     });
-  } catch (error) {
-    logger.error('Error creating session', error);
-    res.status(500).json({ error: 'Failed to create session' });
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    const errorCode = error?.code || 'UNKNOWN';
+    logger.error(`Error creating session [${errorCode}]: ${errorMessage}`, error);
+    res.status(500).json({ 
+      error: 'Failed to create session',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+    });
   }
 });
 
@@ -761,9 +770,14 @@ async function startServer(): Promise<void> {
 
     // Initialize database (non-blocking - continues even if fails)
     console.log('Initializing database...');
+    let dbConnected = false;
     try {
-      await initializeDatabase();
-      logger.info('✅ Database initialized successfully');
+      dbConnected = await initializeDatabase();
+      if (dbConnected) {
+        logger.info('✅ Database initialized successfully');
+      } else {
+        logger.warn('⚠️ Database connection could not be established - retrying on next request');
+      }
     } catch (dbError) {
       logger.warn('⚠️ Database initialization error (will retry):', dbError);
       // Continue anyway - DB has built-in retry and won't crash
