@@ -71,8 +71,10 @@ COPY --from=node-builder /app/node_modules ./node_modules
 COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
-# Note: DATABASE_URL and REDIS_URL must be set via Railway environment variables
-# DO NOT commit credentials in code or Dockerfile
+# Environment variables are injected by Railway at runtime:
+# - DATABASE_URL (set in Railway Variables)
+# - REDIS_URL (set in Railway Variables)
+# Credentials should never be hardcoded in Dockerfile
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
