@@ -10,18 +10,35 @@ declare global {
 }
 
 /**
- * Initialize and cache Prisma client
+ * Initialize and cache Prisma client (lazy - created on first use)
+ * Defers creation until DATABASE_URL is available at runtime
  * Prevents multiple instances in development
  */
-export const prisma =
-  global.prisma ||
-  new PrismaClient({
+let _prismaInstance: PrismaClient | undefined;
+
+function getPrismaClient(): PrismaClient {
+  if (_prismaInstance) return _prismaInstance;
+  
+  _prismaInstance = new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query', 'warn', 'error'] : ['error'],
   });
 
-if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma;
+  if (process.env.NODE_ENV !== 'production') {
+    (global as any).prisma = _prismaInstance;
+  }
+
+  return _prismaInstance;
 }
+
+// Lazy-loaded proxy to prevent initialization at module load
+export const prisma = new Proxy({} as PrismaClient, {
+  get: (_target, prop) => {
+    if (prop === '_get' || prop === 'toJSON' || prop === Symbol.toStringTag) {
+      return undefined;
+    }
+    return (getPrismaClient() as any)[prop];
+  },
+}) as unknown as PrismaClient;
 
 /**
  * Database initialization and connection check with retry logic

@@ -15,7 +15,7 @@ COPY shared-client-sdk/package*.json shared-client-sdk/
 COPY shared-core/src ./shared-core/src
 COPY shared-core/prisma ./shared-core/prisma
 
-# Create .env with placeholder DATABASE_URL for prisma generate at build time
+# Create .env with DATABASE_URL for prisma generate at build time
 RUN echo "DATABASE_URL=postgresql://user:pass@localhost:5432/db" > .env
 
 RUN npm install --legacy-peer-deps 2>/dev/null || npm install
@@ -78,12 +78,16 @@ RUN mkdir -p /app/scripts && \
     echo 'echo "[Entrypoint] NODE_ENV: ${NODE_ENV:-not set}"' >> /app/scripts/entrypoint.sh && \
     echo 'echo "[Entrypoint] PORT: ${PORT:-not set}"' >> /app/scripts/entrypoint.sh && \
     echo 'if [ -z "$DATABASE_URL" ]; then' >> /app/scripts/entrypoint.sh && \
-    echo '  echo "[WARN] DATABASE_URL environment variable is NOT set"' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[ERROR] DATABASE_URL environment variable is NOT set"' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[ERROR] Set DATABASE_URL in Railway Variables: postgres://user:password@host:port/db"' >> /app/scripts/entrypoint.sh && \
+    echo '  exit 1' >> /app/scripts/entrypoint.sh && \
     echo 'else' >> /app/scripts/entrypoint.sh && \
     echo '  echo "[OK] DATABASE_URL is set"' >> /app/scripts/entrypoint.sh && \
     echo 'fi' >> /app/scripts/entrypoint.sh && \
     echo 'if [ -z "$REDIS_URL" ]; then' >> /app/scripts/entrypoint.sh && \
-    echo '  echo "[WARN] REDIS_URL environment variable is NOT set"' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[ERROR] REDIS_URL environment variable is NOT set"' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[ERROR] Set REDIS_URL in Railway Variables: redis://:password@host:port/0"' >> /app/scripts/entrypoint.sh && \
+    echo '  exit 1' >> /app/scripts/entrypoint.sh && \
     echo 'else' >> /app/scripts/entrypoint.sh && \
     echo '  echo "[OK] REDIS_URL is set"' >> /app/scripts/entrypoint.sh && \
     echo 'fi' >> /app/scripts/entrypoint.sh && \
