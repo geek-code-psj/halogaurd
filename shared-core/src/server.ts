@@ -318,7 +318,7 @@ app.post('/api/v1/sessions', async (req: Request, res: Response) => {
     );
 
     // Also store in Redis for fast access
-    await redis.hSet(`session:${sessionId}`, {
+    await redis.hset(`session:${sessionId}`, {
       created_at: new Date().toISOString(),
       message_count: '0',
     });
@@ -494,7 +494,7 @@ io.on('connection', (socket) => {
       socket.data.sessionId = sessionId;
       socket.join(sessionId);
 
-      await redis.hSet(`session:${sessionId}`, {
+      await redis.hset(`session:${sessionId}`, {
         socket_id: socket.id,
         created_at: new Date().toISOString(),
         last_activity: new Date().toISOString(),
@@ -512,7 +512,7 @@ io.on('connection', (socket) => {
   // Restore existing session
   socket.on('restore_session', async (data: { sessionId: string }, ack: Function) => {
     try {
-      const sessionExists = await redis.hGet(`session:${data.sessionId}`, 'socket_id');
+      const sessionExists = await redis.hget(`session:${data.sessionId}`, 'socket_id');
       
       if (!sessionExists) {
         ack({ success: false, error: 'Session not found' });
@@ -522,7 +522,7 @@ io.on('connection', (socket) => {
       socket.data.sessionId = data.sessionId;
       socket.join(data.sessionId);
 
-      await redis.hSet(`session:${data.sessionId}`, {
+      await redis.hset(`session:${data.sessionId}`, {
         socket_id: socket.id,
         last_activity: new Date().toISOString(),
       });
@@ -591,9 +591,9 @@ io.on('connection', (socket) => {
       }
 
       // Update session message count
-      const currentCount = await redis.hGet(`session:${sessionId}`, 'message_count');
+      const currentCount = await redis.hget(`session:${sessionId}`, 'message_count');
       const newCount = (parseInt(currentCount || '0', 10) + 1).toString();
-      await redis.hSet(`session:${sessionId}`, {
+      await redis.hset(`session:${sessionId}`, {
         message_count: newCount,
         last_activity: new Date().toISOString(),
       });
@@ -632,7 +632,7 @@ io.on('connection', (socket) => {
 
       // Store in Redis for batch processing (in production: save to PostgreSQL)
       await redis.set(`feedback:${feedbackId}`, JSON.stringify(feedbackData));
-      await redis.lPush(`session:${sessionId}:feedbacks`, feedbackId);
+      await redis.lpush(`session:${sessionId}:feedbacks`, feedbackId);
 
       // Expire feedback after 90 days
       await redis.expire(`feedback:${feedbackId}`, 90 * 24 * 60 * 60);
@@ -668,6 +668,21 @@ io.on('connection', (socket) => {
     try {
       const { runDetectionPipeline } = await import('./detectors/index');
       
+      const startTime = Date.now();
+      const results = await Promise.all(
+        data.items.map(item => 
+          runDetectionPipeline({
+            id: `${batchId}_${Math.random().toString(36).substr(2, 9)}`,
+            content: item.content,
+            model: item.model || 'unknown',
+            timestamp: Date.now(),
+            context: item.context,
+            conversationHistory: item.conversationHistory || [],
+            metadata: item.metadata || {},
+          })
+        )
+      );
+
       socket.emit('batch_complete', {
         batchId,
         sessionId,
@@ -744,14 +759,14 @@ async function startServer(): Promise<void> {
     logger.info('✅ Redis ready - initializing BullMQ queues');
     await initializeBullMQQueues();
 
-    // Initialize database with retry logic
+    // Initialize database (non-blocking - continues even if fails)
     console.log('Initializing database...');
     try {
       await initializeDatabase();
-      logger.info('✅ Database initialized');
+      logger.info('✅ Database initialized successfully');
     } catch (dbError) {
-      logger.warn('⚠️ Database connection may be degraded - will retry', dbError);
-      // Continue anyway - DB has built-in retry
+      logger.warn('⚠️ Database initialization error (will retry):', dbError);
+      // Continue anyway - DB has built-in retry and won't crash
     }
 
     // Start cleanup tasks (every hour)
@@ -769,8 +784,17 @@ async function startServer(): Promise<void> {
       logger.info(`🚀 HaloGuard backend running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`Redis: ${redisUrlMasked}`);
-      logger.info(`Database: PostgreSQL (configured)`);
+      logger.info(`Database: PostgreSQL (${process.env.DATABASE_URL ? 'configured' : 'NOT SET'})`);
       logger.info('✅ All services initialized and ready');
+
+      // Diagnostic info for troubleshooting
+      if (process.env.DATABASE_URL) {
+        const dbUrlMasked = process.env.DATABASE_URL.replace(/:.*@/, ':***@');
+        logger.info(`Database URL: ${dbUrlMasked}`);
+      } else {
+        logger.error('❌ DATABASE_URL environment variable is NOT SET - database operations will fail');
+        logger.error('Add DATABASE_URL to Railway Variables: postgres://user:password@host:port/db');
+      }
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
