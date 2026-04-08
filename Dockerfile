@@ -71,9 +71,10 @@ COPY --from=node-builder /app/node_modules ./node_modules
 COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
-# Create secure entrypoint script to validate environment variables
+# Create secure entrypoint script to validate environment variables and run migrations
 RUN mkdir -p /app/scripts && \
     echo '#!/bin/sh' > /app/scripts/entrypoint.sh && \
+    echo 'set -e' >> /app/scripts/entrypoint.sh && \
     echo 'echo "[Entrypoint] Starting HaloGuard..."' >> /app/scripts/entrypoint.sh && \
     echo 'echo "[Entrypoint] NODE_ENV: ${NODE_ENV:-not set}"' >> /app/scripts/entrypoint.sh && \
     echo 'echo "[Entrypoint] PORT: ${PORT:-not set}"' >> /app/scripts/entrypoint.sh && \
@@ -81,20 +82,21 @@ RUN mkdir -p /app/scripts && \
     echo '  echo "[ERROR] DATABASE_URL environment variable is NOT set"' >> /app/scripts/entrypoint.sh && \
     echo '  echo "[ERROR] Set DATABASE_URL in Railway Variables: postgres://user:password@host:port/db"' >> /app/scripts/entrypoint.sh && \
     echo '  exit 1' >> /app/scripts/entrypoint.sh && \
-    echo 'else' >> /app/scripts/entrypoint.sh && \
-    echo '  echo "[OK] DATABASE_URL is set"' >> /app/scripts/entrypoint.sh && \
     echo 'fi' >> /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] DATABASE_URL is set"' >> /app/scripts/entrypoint.sh && \
     echo 'if [ -z "$REDIS_URL" ]; then' >> /app/scripts/entrypoint.sh && \
     echo '  echo "[ERROR] REDIS_URL environment variable is NOT set"' >> /app/scripts/entrypoint.sh && \
     echo '  echo "[ERROR] Set REDIS_URL in Railway Variables: redis://:password@host:port/0"' >> /app/scripts/entrypoint.sh && \
     echo '  exit 1' >> /app/scripts/entrypoint.sh && \
-    echo 'else' >> /app/scripts/entrypoint.sh && \
-    echo '  echo "[OK] REDIS_URL is set"' >> /app/scripts/entrypoint.sh && \
     echo 'fi' >> /app/scripts/entrypoint.sh && \
-    echo 'echo "[Entrypoint] Running database migrations..."' >> /app/scripts/entrypoint.sh && \
-    echo 'cd /app/shared-core && npx prisma migrate deploy || { echo "[WARN] Migrations failed - continuing startup"; }' >> /app/scripts/entrypoint.sh && \
-    echo 'cd /app' >> /app/scripts/entrypoint.sh && \
-    echo 'echo "[Entrypoint] Starting server..."' >> /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] REDIS_URL is set"' >> /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] Running database migrations (CRITICAL)..."' >> /app/scripts/entrypoint.sh && \
+    echo 'npx tsx shared-core/src/migrate.ts' >> /app/scripts/entrypoint.sh && \
+    echo 'if [ $? -ne 0 ]; then' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[FATAL] Database migrations failed - server cannot start"' >> /app/scripts/entrypoint.sh && \
+    echo '  exit 1' >> /app/scripts/entrypoint.sh && \
+    echo 'fi' >> /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] Migrations successful - starting server..."' >> /app/scripts/entrypoint.sh && \
     echo 'exec npx tsx shared-core/src/server.ts' >> /app/scripts/entrypoint.sh && \
     chmod +x /app/scripts/entrypoint.sh
 
