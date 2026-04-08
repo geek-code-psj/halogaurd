@@ -24,16 +24,32 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 /**
- * Database initialization and connection check
+ * Database initialization and connection check with retry logic
  */
 export async function initializeDatabase(): Promise<void> {
-  try {
-    // Test the connection
-    await prisma.$executeRaw`SELECT 1`;
-    console.log('✅ Database connection established');
-  } catch (error) {
-    console.error('❌ Failed to connect to database:', error);
-    throw error;
+  const MAX_RETRIES = 10;
+  const INITIAL_DELAY = 1000; // 1 second
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      // Test the connection
+      await prisma.$executeRaw`SELECT 1`;
+      console.log('✅ Database connection established');
+      return; // Success!
+    } catch (error) {
+      if (attempt === MAX_RETRIES) {
+        // Final attempt failed
+        console.error('❌ Failed to connect to database after', MAX_RETRIES, 'attempts:', error);
+        throw error;
+      }
+
+      // Calculate exponential backoff delay
+      const delay = INITIAL_DELAY * Math.pow(2, attempt - 1);
+      console.warn(`⚠️  Connection attempt ${attempt}/${MAX_RETRIES} failed, retrying in ${delay}ms...`);
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
 }
 
