@@ -335,6 +335,81 @@ footer a:hover {
   text-decoration: underline;
 }
 
+.input-field {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #f9f9f9;
+  color: #333;
+  margin-top: 6px;
+}
+
+body.dark-mode .input-field {
+  background: #2a2a2a;
+  border-color: #444;
+  color: #e0e0e0;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #2196F3;
+  background: white;
+}
+
+body.dark-mode .input-field:focus {
+  background: #333;
+}
+
+.notification {
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.notification.success {
+  background: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.notification.error {
+  background: rgba(244, 67, 54, 0.1);
+  color: #F44336;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.notification.info {
+  background: rgba(33, 150, 243, 0.1);
+  color: #2196F3;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+body.dark-mode .notification.success {
+  background: rgba(76, 175, 80, 0.15);
+}
+
+body.dark-mode .notification.error {
+  background: rgba(244, 67, 54, 0.15);
+}
+
+body.dark-mode .notification.info {
+  background: rgba(33, 150, 243, 0.15);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Scrollbar styling */
 .container::-webkit-scrollbar {
   width: 6px;

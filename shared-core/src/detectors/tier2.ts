@@ -1,7 +1,7 @@
 /**
  * TIER 2: Fact-Checking via Wikipedia/APIs (200-400ms)
  * Verifies factual claims against public knowledge bases
- * Now with real Wikipedia + Wikidata integration
+ * Now with real Wikipedia + Wikidata integration + Python Wikipedia-API
  */
 
 import { DetectionIssue, DetectionRequest } from "../types/detector";
@@ -9,6 +9,7 @@ import {
   verifyClaimAgainstWikipedia,
   checkWikidataFact,
   batchVerifyClaims,
+  verifyClaimsWithPythonWikipedia,
 } from "../utils/fact-checker";
 
 /**
@@ -37,8 +38,16 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
   }
 
   try {
-    // Verify claims against Wikipedia (with 350ms timeout)
+    // Primary verification: JavaScript Wikipedia API (faster, ~100-200ms)
     const verificationPromise = batchVerifyClaims(claims);
+    
+    // Secondary verification: Python Wikipedia-API (more thorough, runs in parallel)
+    let pythonVerifications = new Map<string, any>();
+    try {
+      pythonVerifications = await verifyClaimsWithPythonWikipedia(claims.slice(0, 3));
+    } catch (error) {
+      console.debug('Python Wikipedia verification failed, continuing with JavaScript API only');
+    }
 
     const timeoutPromise = new Promise<Map<string, any>>((resolve) => {
       setTimeout(() => {
@@ -50,29 +59,38 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
 
     // Check each claim and create issues for unverified ones
     for (const claim of claims) {
-      const verification = verifications?.get(claim) || null;
+      const jsVerification = verifications?.get(claim) || null;
+      const pythonVerification = pythonVerifications?.get(claim) || null;
 
-      if (!verification) {
-        // Timeout case
+      // If both verification sources timeout, skip
+      if (!jsVerification && !pythonVerification) {
         console.debug(`Tier 2 fact-check timeout for claim: ${claim}`);
         continue;
       }
 
+      // Merge verification results: use Python as tie-breaker
+      const finalVerification = pythonVerification || jsVerification;
+      const hasDualVerification = jsVerification && pythonVerification;
+
       // If claim is not verified or has low confidence
-      if (verification.verified === false) {
+      if (finalVerification?.verified === false) {
+        // High confidence error if both sources disagree
+        const confidenceBoost = hasDualVerification && jsVerification?.verified === false ? 0.15 : 0;
         issues.push({
           id: `tier2_factual_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
           type: "factual_error",
-          severity: verification.confidence > 0.6 ? "high" : "medium",
+          severity: (finalVerification.confidence + confidenceBoost) > 0.6 ? "high" : "medium",
           tier: 2,
-          score: 1 - verification.confidence,
-          confidence: verification.confidence,
-          message: `Factual claim not verified: "${claim.substring(0, 80)}"${verification.evidence ? ` (${verification.evidence})` : ""}`,
+          score: 1 - finalVerification.confidence,
+          confidence: Math.min(1, finalVerification.confidence + confidenceBoost),
+          message: `Factual claim not verified: "${claim.substring(0, 80)}"${finalVerification.evidence ? ` (${finalVerification.evidence})` : ""}${hasDualVerification ? " [dual-verified]" : ""}`,
           evidence: {
             claim,
-            source: verification.source,
-            url: verification.url,
-            reason: verification.evidence,
+            source: finalVerification.source,
+            url: finalVerification.url,
+            reason: finalVerification.evidence,
+            jsSource: jsVerification?.source,
+            pythonSource: pythonVerification?.source,
           },
           suggestions: [
             "Verify with primary sources",
@@ -81,7 +99,7 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
             "Check the publication date of the AI model's training data",
           ],
         });
-      } else if (verification.verified === null) {
+      } else if (finalVerification?.verified === null) {
         // Unknown verification (couldn't find data)
         issues.push({
           id: `tier2_unverified_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
@@ -90,10 +108,10 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
           tier: 2,
           score: 0.3,
           confidence: 0.4,
-          message: `Claim could not be verified in knowledge base: "${claim.substring(0, 80)}"`,
+          message: `Claim could not be verified in knowledge base: "${claim.substring(0, 80)}"${hasDualVerification ? " [dual-checked]" : ""}`,
           evidence: {
             claim,
-            source: "wikipedia",
+            source: finalVerification.source,
             reason: "Entity or claim not found in corpus",
           },
           suggestions: [

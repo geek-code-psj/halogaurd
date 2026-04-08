@@ -3,20 +3,29 @@
  * Handles UI interactions and settings management
  */
 
+// Helper function to safely get DOM elements
+function getElement<T extends HTMLElement>(id: string, type: string = 'HTMLElement'): T | null {
+  const element = document.getElementById(id);
+  if (!element) {
+    console.warn(`[HaloGuard] Missing DOM element: ${id}`);
+  }
+  return element as T | null;
+}
+
 // DOM elements
-const autoAnalyzeCheckbox = document.getElementById('autoAnalyze') as HTMLInputElement;
-const showBadgeCheckbox = document.getElementById('showBadge') as HTMLInputElement;
-const darkModeCheckbox = document.getElementById('darkMode') as HTMLInputElement;
-const thresholdSlider = document.getElementById('threshold') as HTMLInputElement;
-const thresholdValue = document.getElementById('thresholdValue') as HTMLElement;
-const backendUrlInput = document.getElementById('backendUrl') as HTMLInputElement;
-const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
-const clearCacheBtn = document.getElementById('clearCacheBtn') as HTMLButtonElement;
-const openDocsBtn = document.getElementById('openDocsBtn') as HTMLButtonElement;
-const backendStatus = document.getElementById('backend-status') as HTMLElement;
-const backendIcon = document.getElementById('backendIcon') as HTMLElement;
-const backendText = document.getElementById('backendText') as HTMLElement;
-const notificationEl = document.getElementById('notification') as HTMLElement;
+const autoAnalyzeCheckbox = getElement<HTMLInputElement>('autoAnalyze');
+const showBadgeCheckbox = getElement<HTMLInputElement>('showBadge');
+const darkModeCheckbox = getElement<HTMLInputElement>('darkMode');
+const thresholdSlider = getElement<HTMLInputElement>('threshold');
+const thresholdValue = getElement<HTMLElement>('thresholdValue');
+const backendUrlInput = getElement<HTMLInputElement>('backendUrl');
+const saveBtn = getElement<HTMLButtonElement>('saveBtn');
+const clearCacheBtn = getElement<HTMLButtonElement>('clearCacheBtn');
+const openDocsBtn = getElement<HTMLButtonElement>('openDocsBtn');
+const backendStatus = getElement<HTMLElement>('backend-status');
+const backendIcon = getElement<HTMLElement>('backendIcon');
+const backendText = getElement<HTMLElement>('backendText');
+const notificationEl = getElement<HTMLElement>('notification');
 
 // Load settings on popup open
 document.addEventListener('DOMContentLoaded', () => {
@@ -38,11 +47,11 @@ function loadSettings(): void {
       backendUrl: 'https://halogaurd-production.up.railway.app',
     },
     (data) => {
-      autoAnalyzeCheckbox.checked = data.autoAnalyze ?? true;
-      showBadgeCheckbox.checked = data.showBadge ?? true;
-      thresholdSlider.value = data.threshold.toString();
-      darkModeCheckbox.checked = data.darkMode ?? false;
-      backendUrlInput.value = data.backendUrl || 'https://halogaurd-production.up.railway.app';
+      if (autoAnalyzeCheckbox) autoAnalyzeCheckbox.checked = data.autoAnalyze ?? true;
+      if (showBadgeCheckbox) showBadgeCheckbox.checked = data.showBadge ?? true;
+      if (thresholdSlider) thresholdSlider.value = data.threshold.toString();
+      if (darkModeCheckbox) darkModeCheckbox.checked = data.darkMode ?? false;
+      if (backendUrlInput) backendUrlInput.value = data.backendUrl || 'https://halogaurd-production.up.railway.app';
 
       updateThresholdDisplay(data.threshold);
 
@@ -61,11 +70,11 @@ function loadSettings(): void {
  */
 function saveSettings(): void {
   const settings = {
-    autoAnalyze: autoAnalyzeCheckbox.checked,
-    threshold: parseInt(thresholdSlider.value),
-    showBadge: showBadgeCheckbox.checked,
-    darkMode: darkModeCheckbox.checked,
-    backendUrl: backendUrlInput.value || 'https://halogaurd-production.up.railway.app',
+    autoAnalyze: autoAnalyzeCheckbox?.checked ?? true,
+    threshold: parseInt(thresholdSlider?.value ?? '50'),
+    showBadge: showBadgeCheckbox?.checked ?? true,
+    darkMode: darkModeCheckbox?.checked ?? false,
+    backendUrl: backendUrlInput?.value || 'https://halogaurd-production.up.railway.app',
   };
 
   // Save to chrome storage
@@ -106,10 +115,14 @@ function saveSettings(): void {
  * Update threshold display
  */
 function updateThresholdDisplay(value: number): void {
-  thresholdValue.textContent = `${value}%`;
+  if (thresholdValue) {
+    thresholdValue.textContent = `${value}%`;
+  }
   // Update slider background color gradient
-  const percent = value;
-  (thresholdSlider as any).style.background = `linear-gradient(to right, #2196F3 0%, #2196F3 ${percent}%, #ddd ${percent}%, #ddd 100%)`;
+  if (thresholdSlider) {
+    const percent = value;
+    (thresholdSlider as any).style.background = `linear-gradient(to right, #2196F3 0%, #2196F3 ${percent}%, #ddd ${percent}%, #ddd 100%)`;
+  }
 }
 
 /**
@@ -127,22 +140,24 @@ async function checkBackendHealth(): Promise<void> {
       signal: AbortSignal.timeout(3000),
     });
 
-    if (response.ok) {
+    if (response.ok && backendStatus && backendIcon && backendText) {
       const data = await response.json() as any;
       backendStatus.classList.remove('error');
       backendIcon.textContent = '✅';
       backendText.textContent = `Connected`;
       backendStatus.title = `Status: ${data.status || 'ok'}`;
-    } else {
+    } else if (backendStatus && backendIcon && backendText) {
       backendStatus.classList.add('error');
       backendIcon.textContent = '❌';
       backendText.textContent = 'Backend unreachable';
     }
   } catch (error) {
-    backendStatus.classList.add('error');
-    backendIcon.textContent = '⚠️';
-    backendText.textContent = 'Backend connection failed';
-    backendStatus.title = 'Make sure HaloGuard backend is running';
+    if (backendStatus && backendIcon && backendText) {
+      backendStatus.classList.add('error');
+      backendIcon.textContent = '⚠️';
+      backendText.textContent = 'Backend connection failed';
+      backendStatus.title = 'Make sure HaloGuard backend is running';
+    }
   }
 }
 
@@ -169,49 +184,65 @@ function showNotification(message: string, type: 'success' | 'error' = 'success'
  */
 function setupEventListeners(): void {
   // Save button
-  saveBtn.addEventListener('click', saveSettings);
+  if (saveBtn) {
+    saveBtn.addEventListener('click', saveSettings);
+  }
 
   // Threshold slider
-  thresholdSlider.addEventListener('input', (e) => {
-    const value = (e.target as HTMLInputElement).value;
-    updateThresholdDisplay(parseInt(value));
-  });
+  if (thresholdSlider) {
+    thresholdSlider.addEventListener('input', (e) => {
+      const value = (e.target as HTMLInputElement).value;
+      updateThresholdDisplay(parseInt(value));
+    });
+  }
 
   // Clear cache button
-  clearCacheBtn.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, (response) => {
-      if (response.error) {
-        showNotification('Failed to clear cache: ' + response.error, 'error');
-      } else {
-        showNotification('✓ Cache cleared!', 'success');
-      }
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, (response) => {
+        if (response.error) {
+          showNotification('Failed to clear cache: ' + response.error, 'error');
+        } else {
+          showNotification('✓ Cache cleared!', 'success');
+        }
+      });
     });
-  });
+  }
 
   // Open docs button
-  openDocsBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: 'https://github.com/haloguard/docs#readme' });
-  });
+  if (openDocsBtn) {
+    openDocsBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'https://github.com/haloguard/docs#readme' });
+    });
+  }
 
   // Dark mode toggle
-  darkModeCheckbox.addEventListener('change', () => {
-    saveSettings();
-  });
+  if (darkModeCheckbox) {
+    darkModeCheckbox.addEventListener('change', () => {
+      saveSettings();
+    });
+  }
 
   // Auto-analyze toggle
-  autoAnalyzeCheckbox.addEventListener('change', saveSettings);
+  if (autoAnalyzeCheckbox) {
+    autoAnalyzeCheckbox.addEventListener('change', saveSettings);
+  }
 
   // Show badge toggle
-  showBadgeCheckbox.addEventListener('change', saveSettings);
+  if (showBadgeCheckbox) {
+    showBadgeCheckbox.addEventListener('change', saveSettings);
+  }
 
   // Backend URL input - save when blurred
-  backendUrlInput.addEventListener('blur', () => {
-    if (backendUrlInput.value !== '') {
-      saveSettings();
-      // Recheck health with new URL
-      setTimeout(checkBackendHealth, 500);
-    }
-  });
+  if (backendUrlInput) {
+    backendUrlInput.addEventListener('blur', () => {
+      if (backendUrlInput.value !== '') {
+        saveSettings();
+        // Recheck health with new URL
+        setTimeout(checkBackendHealth, 500);
+      }
+    });
+  }
 
   // Re-check backend health every 30 seconds
   setInterval(() => {

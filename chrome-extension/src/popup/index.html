@@ -51,14 +51,16 @@
 
     <div class="settings-group">
       <label for="backendUrl">Backend URL:</label>
-      <input type="text" id="backendUrl" placeholder="http://localhost:3000" class="input">
-      <p class="setting-hint">Leave empty for default</p>
+      <input type="text" id="backendUrl" placeholder="https://halogaurd-production.up.railway.app" class="input-field">
+      <p class="setting-hint">Leave blank for default production URL</p>
     </div>
+
+    <div id="notification" class="notification" style="display: none;"></div>
 
     <div class="actions">
       <button id="saveBtn" class="button button-primary">Save Settings</button>
       <button id="clearCacheBtn" class="button button-secondary">Clear Cache</button>
-      <button id="openDocsBtn" class="button button-secondary">📖 Docs</button>
+      <button id="openDocsBtn" class="button button-secondary">Documentation</button>
     </div>
 
     <div id="stats" class="stats" style="display: none;">

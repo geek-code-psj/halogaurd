@@ -242,29 +242,39 @@ class ServiceWorkerManager {
    * Setup periodic keep-alive
    */
   private setupKeepAlive(): void {
-    chrome.alarms.create('haloguard_keepalive', { periodInMinutes: 1 });
-    
-    chrome.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === 'haloguard_keepalive') {
-        // Periodic health check
-        this.health().then((result) => {
-          console.log('[HaloGuard] Keep-alive health check:', result);
-        });
+    // Check if chrome.alarms is available
+    if (!chrome.alarms) {
+      console.warn('[HaloGuard] chrome.alarms not available, skipping keep-alive');
+      return;
+    }
 
-        // Re-auth refresh
-        chrome.storage.local.get({ keepaliveCount: 0 }, (data) => {
-          const count = (data.keepaliveCount || 0) + 1;
-          chrome.storage.local.set({ keepaliveCount: count });
+    try {
+      chrome.alarms.create('haloguard_keepalive', { periodInMinutes: 1 });
+      
+      chrome.alarms.onAlarm.addListener((alarm) => {
+        if (alarm.name === 'haloguard_keepalive') {
+          // Periodic health check
+          this.health().then((result) => {
+            console.log('[HaloGuard] Keep-alive health check:', result);
+          });
 
-          // Refresh token every 12 hours
-          if (count % 720 === 0) {
-            console.log('[HaloGuard] Refreshing auth token...');
-            this.authToken = null;
-            this.ensureAuthenticated();
-          }
-        });
-      }
-    });
+          // Re-auth refresh
+          chrome.storage.local.get({ keepaliveCount: 0 }, (data) => {
+            const count = (data.keepaliveCount || 0) + 1;
+            chrome.storage.local.set({ keepaliveCount: count });
+
+            // Refresh token every 12 hours
+            if (count % 720 === 0) {
+              console.log('[HaloGuard] Refreshing auth token...');
+              this.authToken = null;
+              this.ensureAuthenticated();
+            }
+          });
+        }
+      });
+    } catch (error) {
+      console.warn('[HaloGuard] Failed to setup keep-alive:', error);
+    }
   }
 }
 
