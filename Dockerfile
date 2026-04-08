@@ -71,9 +71,6 @@ COPY --from=node-builder /app/node_modules ./node_modules
 COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
-# Create .env with Supabase DATABASE_URL as fallback (single quotes preserve % encoding, sslmode required)
-RUN echo 'DATABASE_URL=postgresql://postgres:-rsnSF.ZBzk22%25@db.ozlhebnzmoqvawyrwida.supabase.co:5432/postgres?sslmode=require' > .env
-
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001

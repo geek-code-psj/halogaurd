@@ -23,6 +23,20 @@ import {
 // Load environment variables
 dotenv.config();
 
+// Debug: Log DATABASE_URL status
+if (process.env.DATABASE_URL) {
+  logger.info(`DATABASE_URL is set (length: ${process.env.DATABASE_URL.length} chars)`);
+} else {
+  logger.warn('DATABASE_URL environment variable is NOT set');
+}
+
+// Debug: Log REDIS_URL status  
+if (process.env.REDIS_URL) {
+  logger.info(`REDIS_URL is set`);
+} else {
+  logger.warn('REDIS_URL environment variable is NOT set');
+}
+
 // Initialize logger
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',

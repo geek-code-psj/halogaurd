@@ -25,6 +25,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 /**
  * Database initialization and connection check with retry logic
+ * Gracefully handles connection failures - warns but doesn't crash
  */
 export async function initializeDatabase(): Promise<void> {
   const MAX_RETRIES = 10;
@@ -38,9 +39,11 @@ export async function initializeDatabase(): Promise<void> {
       return; // Success!
     } catch (error) {
       if (attempt === MAX_RETRIES) {
-        // Final attempt failed
-        console.error('❌ Failed to connect to database after', MAX_RETRIES, 'attempts:', error);
-        throw error;
+        // Final attempt failed - warn but don't crash
+        console.error('❌ Failed to connect to database after', MAX_RETRIES, 'attempts');
+        console.error('Database error:', (error as Error).message);
+        console.warn('⚠️  Server will start without database - check Railway environment variables');
+        return; // Don't throw - allow server to start
       }
 
       // Calculate exponential backoff delay
