@@ -21,7 +21,6 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onCommand:haloguard.openPanel",
     "onStartupFinished"
   ],
   "contributes": {

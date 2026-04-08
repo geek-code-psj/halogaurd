@@ -147,7 +147,6 @@ app.get('/ready', async (req: Request, res: Response) => {
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
       const nliResponse = await fetch(`${nliServiceUrl.replace('/nli', '')}/health`, {
-        timeout: 5000,
         signal: controller.signal,
       });
       
@@ -224,14 +223,14 @@ app.post('/api/v1/analyze', async (req: Request, res: Response) => {
           content,
           contentHash,
           model: request.model,
-          flagged: response.flagged || false,
-          overallScore: (response.score || 0) * 100,
+          flagged: (response as any)?.flagged || false,
+          overallScore: ((response as any)?.score || 0) * 100,
           latency: executionTime,
-          issues: response.issues || [],
-          tier0Result: response.tier0 || null,
-          tier1Result: response.tier1 || null,
-          tier2Result: response.tier2 || null,
-          tier3Result: response.tier3 || null,
+          issues: (response as any)?.issues || [],
+          tier0Result: (response as any)?.tier0 || null,
+          tier1Result: (response as any)?.tier1 || null,
+          tier2Result: (response as any)?.tier2 || null,
+          tier3Result: (response as any)?.tier3 || null,
           tier4Result: null,
         });
 
@@ -308,7 +307,14 @@ app.get('/api/v1/stats', async (req: Request, res: Response) => {
     const feedbackKeys = await redis.keys('feedback:*');
     const totalFeedback = feedbackKeys.length;
     
-    const falsePositives = feedback.filter((f: any) => f.verdict === 'false_positive').length;
+    // Track false positives separately
+    let falsePositives = 0;
+    for (const key of feedbackKeys) {
+      const feedback = await redis.get(key);
+      if (feedback && feedback.includes('false_positive')) {
+        falsePositives++;
+      }
+    }
     
     res.json({
       timestamp: new Date().toISOString(),
@@ -515,8 +521,10 @@ io.on('connection', (socket) => {
       socket.emit('analysis_complete', {
         requestId,
         sessionId,
-        ...response,
+        flagged: (response as any)?.flagged || false,
+        tiers: (response as any)?.tiers || [],
         execution_time_ms: executionTime,
+        asyncRemaining: (response as any)?.asyncRemaining || [],
       });
 
       // Queue async tier (4) if needed
@@ -575,7 +583,7 @@ io.on('connection', (socket) => {
       };
 
       // Store in Redis for batch processing (in production: save to PostgreSQL)
-      await redis.hSet(`feedback:${feedbackId}`, feedbackData);
+      await redis.set(`feedback:${feedbackId}`, JSON.stringify(feedbackData));
       await redis.lPush(`session:${sessionId}:feedbacks`, feedbackId);
 
       // Expire feedback after 90 days

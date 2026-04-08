@@ -72,26 +72,24 @@ COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
 # Create secure entrypoint script to validate environment variables
-RUN mkdir -p /app/scripts && cat > /app/scripts/entrypoint.sh << 'SCRIPT'
-#!/bin/sh
-set -e
-echo "[Entrypoint] Starting HaloGuard..."
-echo "[Entrypoint] NODE_ENV: ${NODE_ENV:-not set}"
-echo "[Entrypoint] PORT: ${PORT:-not set}"
-if [ -z "$DATABASE_URL" ]; then
-  echo "[WARN] DATABASE_URL environment variable is NOT set"
-else
-  echo "[OK] DATABASE_URL is set (${#DATABASE_URL} chars)"
-fi
-if [ -z "$REDIS_URL" ]; then
-  echo "[WARN] REDIS_URL environment variable is NOT set"
-else
-  echo "[OK] REDIS_URL is set"
-fi
-echo "[Entrypoint] Starting server..."
-exec npx tsx shared-core/src/server.ts
-SCRIPT
-chmod +x /app/scripts/entrypoint.sh
+RUN mkdir -p /app/scripts && \
+    echo '#!/bin/sh' > /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] Starting HaloGuard..."' >> /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] NODE_ENV: ${NODE_ENV:-not set}"' >> /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] PORT: ${PORT:-not set}"' >> /app/scripts/entrypoint.sh && \
+    echo 'if [ -z "$DATABASE_URL" ]; then' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[WARN] DATABASE_URL environment variable is NOT set"' >> /app/scripts/entrypoint.sh && \
+    echo 'else' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[OK] DATABASE_URL is set"' >> /app/scripts/entrypoint.sh && \
+    echo 'fi' >> /app/scripts/entrypoint.sh && \
+    echo 'if [ -z "$REDIS_URL" ]; then' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[WARN] REDIS_URL environment variable is NOT set"' >> /app/scripts/entrypoint.sh && \
+    echo 'else' >> /app/scripts/entrypoint.sh && \
+    echo '  echo "[OK] REDIS_URL is set"' >> /app/scripts/entrypoint.sh && \
+    echo 'fi' >> /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] Starting server..."' >> /app/scripts/entrypoint.sh && \
+    echo 'exec npx tsx shared-core/src/server.ts' >> /app/scripts/entrypoint.sh && \
+    chmod +x /app/scripts/entrypoint.sh
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
