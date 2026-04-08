@@ -42,26 +42,52 @@ export const prisma = new Proxy({} as PrismaClient, {
 
 /**
  * Database initialization and connection check with retry logic
- * Gracefully handles connection failures - warns but doesn't crash
+ * Runs migrations and verifies database is ready
  */
 export async function initializeDatabase(throwOnFailure: boolean = false): Promise<boolean> {
   const MAX_RETRIES = 10;
   const INITIAL_DELAY = 1000; // 1 second
 
+  console.log('[initializeDatabase] Starting database initialization sequence...');
+  
+  // First, run database migrations
+  console.log('[initializeDatabase] Step 1: Running Prisma migrations...');
+  try {
+    const { execSync } = await import('child_process');
+    const sharedCorePath = await import('path').then(p => p.join(__dirname, '..'));
+    
+    try {
+      execSync('npx prisma migrate deploy --skip-generate', {
+        cwd: sharedCorePath,
+        stdio: 'pipe',
+        encoding: 'utf-8',
+      });
+      console.log('[initializeDatabase] ✅ Migrations completed successfully');
+    } catch (error) {
+      const err = error as any;
+      console.warn('[initializeDatabase] ⚠️  Prisma migrate deploy had issues (may be pending migrations)');
+      console.warn('[initializeDatabase] stderr:', err.stderr?.toString() || 'N/A');
+    }
+  } catch (error) {
+    console.warn('[initializeDatabase] ⚠️  Could not run node-based migrations:', error);
+  }
+
+  // Now test the connection
+  console.log('[initializeDatabase] Step 2: Testing database connection with retries...');
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       // Test the connection
       await prisma.$executeRaw`SELECT 1`;
-      console.log('✅ Database connection established');
+      console.log('[initializeDatabase] ✅ Database connection established on attempt', attempt);
       return true; // Success!
     } catch (error) {
       const errorMsg = (error as Error).message || String(error);
       
       if (attempt === MAX_RETRIES) {
         // Final attempt failed
-        console.error('❌ Failed to connect to database after', MAX_RETRIES, 'attempts');
-        console.error('Database error:', errorMsg);
-        console.warn('⚠️  Database connection failed - check Railway environment variables');
+        console.error('[initializeDatabase] ❌ Failed to connect to database after', MAX_RETRIES, 'attempts');
+        console.error('[initializeDatabase] Last error:', errorMsg);
+        console.warn('[initializeDatabase] Check Railway environment variables and database status');
         
         if (throwOnFailure) {
           throw error;
@@ -71,7 +97,7 @@ export async function initializeDatabase(throwOnFailure: boolean = false): Promi
 
       // Calculate exponential backoff delay
       const delay = INITIAL_DELAY * Math.pow(2, attempt - 1);
-      console.warn(`⚠️  Connection attempt ${attempt}/${MAX_RETRIES} failed (${errorMsg}), retrying in ${delay}ms...`);
+      console.warn(`[initializeDatabase] Attempt ${attempt}/${MAX_RETRIES} failed, retrying in ${delay}ms...`);
       
       // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, delay));

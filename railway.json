@@ -6,7 +6,7 @@
   },
   "deploy": {
     "numReplicas": 1,
-    "startCommand": "npx tsx shared-core/src/server.ts"
+    "startCommand": "/app/scripts/entrypoint.sh"
   },
   "plugins": [
     {
