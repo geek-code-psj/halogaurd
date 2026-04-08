@@ -296,9 +296,21 @@ app.post('/api/v1/analyze', async (req: Request, res: Response) => {
       ...response,
       execution_time_ms: executionTime,
     });
-  } catch (error) {
-    logger.error('Error in /analyze endpoint', error);
-    res.status(500).json({ error: 'Internal server error' });
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    const errorCode = error?.code || 'UNKNOWN';
+    const errorStack = error?.stack || 'No stack trace available';
+    logger.error('Error in /analyze endpoint', { 
+      code: errorCode,
+      message: errorMessage,
+      stack: errorStack,
+    });
+    res.status(500).json({ 
+      error: 'Analysis failed',
+      code: errorCode,
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      debug_hint: process.env.NODE_ENV === 'development' ? 'Check server logs for stack trace' : undefined,
+    });
   }
 });
 
@@ -311,6 +323,7 @@ app.post('/api/v1/sessions', async (req: Request, res: Response) => {
     const { platform, tabId, conversationId, userId } = req.body;
 
     logger.debug(`Creating session: platform=${platform}, tabId=${tabId}`);
+    console.log('[POST /sessions] Request body:', { platform, tabId, conversationId, userId });
 
     const sessionId = await getOrCreateSession(
       platform || 'unknown',
@@ -322,10 +335,12 @@ app.post('/api/v1/sessions', async (req: Request, res: Response) => {
     logger.debug(`Session ID created: ${sessionId}`);
 
     // Also store in Redis for fast access
+    console.log('[POST /sessions] Storing session in Redis:', sessionId);
     await redis.hset(`session:${sessionId}`, {
       created_at: new Date().toISOString(),
       message_count: '0',
     });
+    console.log('[POST /sessions] Session stored in Redis successfully');
 
     logger.info(`Session created: ${sessionId} [${platform}]`);
 
@@ -337,10 +352,19 @@ app.post('/api/v1/sessions', async (req: Request, res: Response) => {
   } catch (error: any) {
     const errorMessage = error?.message || String(error);
     const errorCode = error?.code || 'UNKNOWN';
+    const errorStack = error?.stack || 'No stack trace';
+    console.error('[POST /sessions] ERROR:', {
+      code: errorCode,
+      message: errorMessage,
+      stack: errorStack,
+      timestamp: new Date().toISOString(),
+    });
     logger.error(`Error creating session [${errorCode}]: ${errorMessage}`, error);
     res.status(500).json({ 
       error: 'Failed to create session',
+      code: errorCode,
       details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      debug_hint: process.env.NODE_ENV === 'development' ? 'Check server logs for stack trace' : undefined,
     });
   }
 });

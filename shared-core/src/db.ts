@@ -133,9 +133,16 @@ export async function getOrCreateSession(
   conversationId?: string,
   userId?: string
 ): Promise<string> {
+  console.log('[getOrCreateSession] ENTRY', { platform, tabId, conversationId, userId });
+  
   try {
+    console.log('[getOrCreateSession] Prisma client initialization check');
+    const prismaClient = getPrismaClient();
+    console.log('[getOrCreateSession] Prisma client ready');
+    
     // Try to find existing active session
     if (tabId) {
+      console.log('[getOrCreateSession] Searching for existing session with tabId:', tabId);
       const existing = await prisma.session.findFirst({
         where: {
           tabId,
@@ -147,16 +154,20 @@ export async function getOrCreateSession(
       });
 
       if (existing) {
+        console.log('[getOrCreateSession] Found existing session, updating lastActiveAt');
         // Update last active time
         await prisma.session.update({
           where: { id: existing.id },
           data: { lastActiveAt: new Date() },
         });
+        console.log('[getOrCreateSession] SUCCESS: Returning existing session', existing.id);
         return existing.id;
       }
+      console.log('[getOrCreateSession] No existing session found for tabId:', tabId);
     }
 
     // Create new session
+    console.log('[getOrCreateSession] Creating new session with data:', { platform, tabId, conversationId, userId });
     const session = await prisma.session.create({
       data: {
         platform,
@@ -166,13 +177,16 @@ export async function getOrCreateSession(
       },
     });
 
+    console.log('[getOrCreateSession] SUCCESS: Created new session', session.id);
     return session.id;
   } catch (error: any) {
-    console.error('Database error in getOrCreateSession:', {
-      error: error?.message,
+    console.error('[getOrCreateSession] EXCEPTION:', {
+      message: error?.message,
       code: error?.code,
+      stack: error?.stack,
       platform,
       tabId,
+      timestamp: new Date().toISOString(),
     });
     throw error;
   }
