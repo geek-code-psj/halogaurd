@@ -91,6 +91,9 @@ RUN mkdir -p /app/scripts && \
     echo 'else' >> /app/scripts/entrypoint.sh && \
     echo '  echo "[OK] REDIS_URL is set"' >> /app/scripts/entrypoint.sh && \
     echo 'fi' >> /app/scripts/entrypoint.sh && \
+    echo 'echo "[Entrypoint] Running database migrations..."' >> /app/scripts/entrypoint.sh && \
+    echo 'cd /app/shared-core && npx prisma migrate deploy || { echo "[WARN] Migrations failed - continuing startup"; }' >> /app/scripts/entrypoint.sh && \
+    echo 'cd /app' >> /app/scripts/entrypoint.sh && \
     echo 'echo "[Entrypoint] Starting server..."' >> /app/scripts/entrypoint.sh && \
     echo 'exec npx tsx shared-core/src/server.ts' >> /app/scripts/entrypoint.sh && \
     chmod +x /app/scripts/entrypoint.sh
