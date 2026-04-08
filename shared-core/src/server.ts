@@ -4,7 +4,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
-import Redis from 'redis';
+import Redis from 'ioredis';
 import { Queue } from 'bullmq';
 import dotenv from 'dotenv';
 import { 
@@ -80,16 +80,31 @@ if (!redisUrl.startsWith('redis://') && !redisUrl.startsWith('rediss://')) {
   logger.error('Make sure REDIS_URL environment variable is set correctly in Railway Variables');
 }
 
-const redis = Redis.createClient({ url: redisUrl });
+// Initialize Redis client using ioredis (compatible with BullMQ)
+const redis = new Redis(redisUrl, {
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  },
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+});
 
 redis.on('error', (err) => {
-  const errMsg = (err as Error).message || String(err);
+  const errMsg = err.message || String(err);
   if (errMsg.includes('WRONGPASS')) {
     logger.error('Redis authentication failed - check password encoding in REDIS_URL');
   }
   logger.error('Redis Client Error:', errMsg);
 });
-redis.connect().catch((err) => logger.error('Failed to connect Redis:', (err as Error).message));
+
+redis.on('connect', () => {
+  logger.info('✅ Redis connected');
+});
+
+redis.on('reconnecting', () => {
+  logger.warn('⚠️ Redis reconnecting...');
+});
 
 // BullMQ queues for async jobs
 const factCheckQueue = new Queue('fact-check', { connection: redis as any });
