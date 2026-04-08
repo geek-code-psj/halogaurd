@@ -71,10 +71,27 @@ COPY --from=node-builder /app/node_modules ./node_modules
 COPY shared-core ./shared-core
 COPY shared-client-sdk ./shared-client-sdk
 
-# Environment variables are injected by Railway at runtime:
-# - DATABASE_URL (set in Railway Variables)
-# - REDIS_URL (set in Railway Variables)
-# Credentials should never be hardcoded in Dockerfile
+# Create secure entrypoint script to validate environment variables
+RUN mkdir -p /app/scripts && cat > /app/scripts/entrypoint.sh << 'SCRIPT'
+#!/bin/sh
+set -e
+echo "[Entrypoint] Starting HaloGuard..."
+echo "[Entrypoint] NODE_ENV: ${NODE_ENV:-not set}"
+echo "[Entrypoint] PORT: ${PORT:-not set}"
+if [ -z "$DATABASE_URL" ]; then
+  echo "[WARN] DATABASE_URL environment variable is NOT set"
+else
+  echo "[OK] DATABASE_URL is set (${#DATABASE_URL} chars)"
+fi
+if [ -z "$REDIS_URL" ]; then
+  echo "[WARN] REDIS_URL environment variable is NOT set"
+else
+  echo "[OK] REDIS_URL is set"
+fi
+echo "[Entrypoint] Starting server..."
+exec npx tsx shared-core/src/server.ts
+SCRIPT
+chmod +x /app/scripts/entrypoint.sh
 
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -88,4 +105,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 EXPOSE 3000
 
-CMD ["npx", "tsx", "shared-core/src/server.ts"]
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
