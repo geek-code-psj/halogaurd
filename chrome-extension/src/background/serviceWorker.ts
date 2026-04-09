@@ -13,6 +13,9 @@ const API_ENDPOINT = `${BACKEND_URL}/api/v1/analyze`;
 class HaloGuardAPI {
   static async analyzePage(request: any) {
     try {
+      console.log('[HaloGuard] API call to:', API_ENDPOINT);
+      console.log('[HaloGuard] Request payload:', { url: request.url, textLength: request.text?.length });
+      
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
         headers: {
@@ -26,8 +29,11 @@ class HaloGuardAPI {
         }),
       });
 
+      console.log('[HaloGuard] API response status:', response.status);
+
       if (!response.ok) {
         if (response.status === 500) {
+          console.warn('[HaloGuard] Backend returned 500, using fallback response');
           return {
             id: `analysis-${Date.now()}`,
             url: request.url,
@@ -45,30 +51,7 @@ class HaloGuardAPI {
             summary: 'Analysis partially completed. ML/LLM tiers unavailable.',
           };
         }
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return {
-        id: `analysis-${Date.now()}`,
-        url: request.url,
-        timestamp: Date.now(),
-        riskLevel: data.flagged ? 'high' : 'low',
-        confidence: data.overallScore || 0.7,
-        findings: data.issues?.map((i: any) => i.description) || [],
-        tiers: data.issues?.map((i: any) => ({
-          tier: i.tier,
-          name: ['Hedging', 'Entropy', 'Context', 'ML Model', 'LLM'][i.tier],
-          status: i.severity === 'critical' ? 'failed' : 'passed',
-          confidence: i.confidence,
-        })) || [],
-        summary: data.flagged ? 'Potential hallucinations detected' : 'Content appears authentic',
-      };
-    } catch (error) {
-      console.error('API call failed:', error);
-      throw error;
-    }
-  }
+        const errorText = await response.text().catch(() => 'Unknown error');\n        console.error('[HaloGuard] API error response:', errorText);\n        throw new Error(`API error: ${response.status} - ${errorText?.substring(0, 100)}`);\n      }\n\n      const data = await response.json();\n      console.log('[HaloGuard] API response data:', { flagged: data.flagged, issuesCount: data.issues?.length });\n      \n      return {\n        id: `analysis-${Date.now()}`,\n        url: request.url,\n        timestamp: Date.now(),\n        riskLevel: data.flagged ? 'high' : 'low',\n        confidence: data.overallScore || 0.7,\n        findings: data.issues?.map((i: any) => i.description) || [],\n        tiers: data.issues?.map((i: any) => ({\n          tier: i.tier,\n          name: ['Hedging', 'Entropy', 'Context', 'ML Model', 'LLM'][i.tier],\n          status: i.severity === 'critical' ? 'failed' : 'passed',\n          confidence: i.confidence,\n        })) || [],\n        summary: data.flagged ? 'Potential hallucinations detected' : 'Content appears authentic',\n      };\n    } catch (error) {\n      const errorMsg = error instanceof Error ? error.message : String(error);\n      console.error('[HaloGuard] API call failed:', errorMsg);\n      \n      // Check for network-level errors\n      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {\n        console.error('[HaloGuard] Network error - check your internet connection');\n        console.error('[HaloGuard] Backend URL:', API_ENDPOINT);\n      }\n      throw error;\n    }\n  }
 
   static async getAnalysisHistory() {
     return new Promise((resolve: any) => {
@@ -190,13 +173,38 @@ chrome.runtime.onMessage.addListener((request: any, sender: any, sendResponse: a
 
 // Send message to content script to collect page content
 async function handleScanPage(tab: any) {
-  if (!tab.id) return;
+  // Validate and get tab ID
+  let tabId = tab?.id;
+  let tabUrl = tab?.url;
+  
+  // If tab ID is missing or invalid, query for active tab
+  if (!tabId || typeof tabId !== 'number' || tabId < 0) {
+    console.log('[HaloGuard] Invalid tab ID from context menu, querying for active tab...');
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        console.error('[HaloGuard] No active tab found');
+        return;
+      }
+      tabId = tabs[0].id;
+      tabUrl = tabs[0].url;
+      console.log('[HaloGuard] Got active tab:', { tabId, url: tabUrl });
+    } catch (error) {
+      console.error('[HaloGuard] Failed to query tabs:', error);
+      return;
+    }
+  }
+
+  console.log(`[HaloGuard] Starting page scan on tab ${tabId}: ${tabUrl}`);
 
   try {
     // Request page content from content script
-    const pageContent: any = await chrome.tabs.sendMessage(tab.id, {
+    console.log('[HaloGuard] Requesting page content from content script...');
+    const pageContent: any = await chrome.tabs.sendMessage(tabId, {
       type: 'GET_PAGE_CONTENT',
     });
+
+    console.log('[HaloGuard] ✓ Got page content:', { url: pageContent.url, textLength: pageContent.text?.length });
 
     // Analyze the page
     const request: any = {
@@ -205,51 +213,99 @@ async function handleScanPage(tab: any) {
       html: pageContent.html || pageContent.text,
     };
 
+    console.log('[HaloGuard] Sending to backend API...');
     const result = await HaloGuardAPI.analyzePage(request);
+    console.log('[HaloGuard] ✓ Got analysis result:', { riskLevel: result.riskLevel, confidence: result.confidence });
+    
     await HaloGuardAPI.saveAnalysis(result);
 
     // Update metrics
     await updateMetrics(result);
 
     // Send result back to content script for highlighting
-    chrome.tabs.sendMessage(tab.id, {
+    chrome.tabs.sendMessage(tabId, {
       type: 'HIGHLIGHT_ISSUES',
       payload: result,
+    }).catch((error) => {
+      console.warn('[HaloGuard] Highlighting failed (content script may not be injected):', error.message);
     });
 
     // Notify popup
     chrome.runtime.sendMessage({
       type: 'ANALYSIS_COMPLETE',
       payload: result,
+    }).catch((error) => {
+      console.warn('[HaloGuard] Popup notification failed:', error.message);
     });
 
+    console.log('[HaloGuard] ✓ Scan complete');
     return result;
   } catch (error) {
-    console.error('Scan failed:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[HaloGuard] Page scan failed:', errorMsg);
+    
+    // Provide helpful error messages
+    if (errorMsg.includes('Could not establish connection')) {
+      console.error('[HaloGuard] Content script is not responding. Make sure you are on an AI platform.');
+    }
   }
 }
 
 async function handleScanText(selectedText: string, tab: any) {
-  if (!tab.url || !tab.id) return;
+  // Validate and get tab info
+  let tabId = tab?.id;
+  let tabUrl = tab?.url;
+
+  if (!tabId || typeof tabId !== 'number' || tabId < 0) {
+    console.log('[HaloGuard] Invalid tab ID from context menu, querying for active tab...');
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        console.error('[HaloGuard] No active tab found');
+        return;
+      }
+      tabId = tabs[0].id;
+      tabUrl = tabs[0].url;
+      console.log('[HaloGuard] Got active tab:', { tabId, url: tabUrl });
+    } catch (error) {
+      console.error('[HaloGuard] Failed to query tabs:', error);
+      return;
+    }
+  }
+
+  if (!tabUrl) {
+    console.error('[HaloGuard] Tab URL not available');
+    return;
+  }
 
   const request: any = {
-    url: tab.url,
+    url: tabUrl,
     text: selectedText,
   };
 
+  console.log(`[HaloGuard] Starting text scan on tab ${tabId}: ${tabUrl}`);
+  console.log('[HaloGuard] Selected text length:', selectedText.length);
+
   try {
+    console.log('[HaloGuard] Sending selected text to backend API...');
     const result = await HaloGuardAPI.analyzePage(request);
+    console.log('[HaloGuard] ✓ Got analysis result:', { riskLevel: result.riskLevel, confidence: result.confidence });
+    
     await HaloGuardAPI.saveAnalysis(result);
     await updateMetrics(result);
 
-    chrome.tabs.sendMessage(tab.id, {
+    chrome.tabs.sendMessage(tabId, {
       type: 'HIGHLIGHT_ISSUES',
       payload: result,
+    }).catch((error) => {
+      console.warn('[HaloGuard] Highlighting failed:', error.message);
     });
 
+    console.log('[HaloGuard] ✓ Text scan complete');
     return result;
   } catch (error) {
-    console.error('Text scan failed:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[HaloGuard] Text scan failed:', errorMsg);
   }
 }
 
