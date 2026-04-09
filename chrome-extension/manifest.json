@@ -20,7 +20,7 @@
     "https://en.wikipedia.org/*"
   ],
   "background": {
-    "service_worker": "background/service-worker.js"
+    "service_worker": "background/serviceWorker.js"
   },
   "content_scripts": [
     {
