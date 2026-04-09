@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "HaloGuard",
+  "name": "HaloGuard - AI Hallucination Detector",
   "version": "0.2.0",
   "description": "Real-time AI hallucination detection for ChatGPT, Claude, Gemini, and more",
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "webRequest"],
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "webRequest", "contextMenus", "alarms"],
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
@@ -15,7 +15,9 @@
     "https://x.com/grok/*",
     "https://meta.ai/*",
     "https://deepseek.com/*",
-    "https://pi.ai/*"
+    "https://pi.ai/*",
+    "https://haloguard-production.up.railway.app/*",
+    "https://en.wikipedia.org/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"
@@ -40,7 +42,13 @@
     }
   ],
   "action": {
-    "default_title": "HaloGuard",
+    "default_title": "HaloGuard - AI Hallucination Detector",
     "default_popup": "popup.html"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["popup/popup.css", "popup/popup.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

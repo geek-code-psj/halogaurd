@@ -48,6 +48,51 @@ export interface DetectionResponse {
   asyncRemaining?: string[];
 }
 
+// Phase 1 Dashboard Types
+export interface AnalysisRequest {
+  url: string;
+  text: string;
+  html?: string;
+}
+
+export interface TierResult {
+  tier: number;
+  name: string;
+  status: 'passed' | 'warning' | 'failed' | 'processing';
+  confidence: number;
+}
+
+export interface AnalysisResult {
+  id: string;
+  url: string;
+  timestamp: number;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  confidence: number;
+  findings: string[];
+  tiers: TierResult[];
+  summary: string;
+}
+
+export interface DashboardMetrics {
+  threatsBlocked: number;
+  dataExposure: number;
+  networkTraffic: string;
+  lastUpdate?: number;
+}
+
+export interface PageContent {
+  url: string;
+  title?: string;
+  text: string;
+  html?: string;
+  selectedText?: string;
+}
+
+export interface ExtensionMessage {
+  type: string;
+  payload?: any;
+}
+
 export interface SessionData {
   sessionId: string;
   platform: string;

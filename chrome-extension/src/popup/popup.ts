@@ -1,254 +1,295 @@
 /**
- * HaloGuard Chrome Extension - Popup Script
- * Handles UI interactions and settings management
+ * HaloGuard Popup Dashboard
+ * Main UI for the extension
  */
 
-// Helper function to safely get DOM elements
-function getElement<T extends HTMLElement>(id: string, type: string = 'HTMLElement'): T | null {
-  const element = document.getElementById(id);
-  if (!element) {
-    console.warn(`[HaloGuard] Missing DOM element: ${id}`);
-  }
-  return element as T | null;
-}
+import { HaloGuardAPI } from '../shared/api';
+import { AnalysisResult, DashboardMetrics } from '../types';
 
-// DOM elements
-const autoAnalyzeCheckbox = getElement<HTMLInputElement>('autoAnalyze');
-const showBadgeCheckbox = getElement<HTMLInputElement>('showBadge');
-const darkModeCheckbox = getElement<HTMLInputElement>('darkMode');
-const thresholdSlider = getElement<HTMLInputElement>('threshold');
-const thresholdValue = getElement<HTMLElement>('thresholdValue');
-const backendUrlInput = getElement<HTMLInputElement>('backendUrl');
-const saveBtn = getElement<HTMLButtonElement>('saveBtn');
-const clearCacheBtn = getElement<HTMLButtonElement>('clearCacheBtn');
-const openDocsBtn = getElement<HTMLButtonElement>('openDocsBtn');
-const backendStatus = getElement<HTMLElement>('backend-status');
-const backendIcon = getElement<HTMLElement>('backendIcon');
-const backendText = getElement<HTMLElement>('backendText');
-const notificationEl = getElement<HTMLElement>('notification');
+class PopupDashboard {
+  private analyses: AnalysisResult[] = [];
+  private metrics: DashboardMetrics | null = null;
+  private currentTab: string = 'dashboard';
 
-// Load settings on popup open
-document.addEventListener('DOMContentLoaded', () => {
-  loadSettings();
-  checkBackendHealth();
-  setupEventListeners();
-});
-
-/**
- * Load settings from Chrome storage
- */
-function loadSettings(): void {
-  chrome.storage.sync.get(
-    {
-      autoAnalyze: true,
-      threshold: 50,
-      showBadge: true,
-      darkMode: false,
-      backendUrl: 'https://haloguard-production.up.railway.app',
-    },
-    (data) => {
-      if (autoAnalyzeCheckbox) autoAnalyzeCheckbox.checked = data.autoAnalyze ?? true;
-      if (showBadgeCheckbox) showBadgeCheckbox.checked = data.showBadge ?? true;
-      if (thresholdSlider) thresholdSlider.value = data.threshold.toString();
-      if (darkModeCheckbox) darkModeCheckbox.checked = data.darkMode ?? false;
-      if (backendUrlInput) backendUrlInput.value = data.backendUrl || 'https://haloguard-production.up.railway.app';
-
-      updateThresholdDisplay(data.threshold);
-
-      console.log('[HaloGuard] Settings loaded:', data);
-
-      // Apply dark mode
-      if (data.darkMode) {
-        document.body.classList.add('dark-mode');
-      }
-    }
-  );
-}
-
-/**
- * Save settings to Chrome storage AND notify service worker
- */
-function saveSettings(): void {
-  const settings = {
-    autoAnalyze: autoAnalyzeCheckbox?.checked ?? true,
-    threshold: parseInt(thresholdSlider?.value ?? '50'),
-    showBadge: showBadgeCheckbox?.checked ?? true,
-    darkMode: darkModeCheckbox?.checked ?? false,
-    backendUrl: backendUrlInput?.value || 'https://haloguard-production.up.railway.app',
-  };
-
-  // Save to chrome storage
-  chrome.storage.sync.set(settings, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Failed to save settings:', chrome.runtime.lastError);
-      showNotification('Failed to save settings', 'error');
-      return;
-    }
-    
-    console.log('[HaloGuard] Settings saved:', settings);
-    
-    // Notify service worker of new settings
-    chrome.runtime.sendMessage(
-      { 
-        type: 'SAVE_SETTINGS', 
-        payload: settings 
-      }, 
-      (response) => {
-        if (response?.error) {
-          showNotification('Backend error: ' + response.error, 'error');
-          return;
-        }
-        showNotification('✓ Settings saved!', 'success');
-      }
-    );
-
-    // Apply dark mode immediately
-    if (settings.darkMode) {
-      document.body.classList.add('dark-mode');
-    } else {
-      document.body.classList.remove('dark-mode');
-    }
-  });
-}
-
-/**
- * Update threshold display
- */
-function updateThresholdDisplay(value: number): void {
-  if (thresholdValue) {
-    thresholdValue.textContent = `${value}%`;
-  }
-  // Update slider background color gradient
-  if (thresholdSlider) {
-    const percent = value;
-    (thresholdSlider as any).style.background = `linear-gradient(to right, #2196F3 0%, #2196F3 ${percent}%, #ddd ${percent}%, #ddd 100%)`;
-  }
-}
-
-/**
- * Check backend health
- */
-async function checkBackendHealth(): Promise<void> {
-  try {
-    // Get backend URL from storage
-    const urlRes = await new Promise<any>((resolve) => {
-      chrome.storage.sync.get('backendUrl', resolve);
-    });
-    const url = urlRes.backendUrl || 'https://haloguard-production.up.railway.app';
-
-    const response = await fetch(`${url}/health`, {
-      signal: AbortSignal.timeout(3000),
-    });
-
-    if (response.ok && backendStatus && backendIcon && backendText) {
-      const data = await response.json() as any;
-      backendStatus.classList.remove('error');
-      backendIcon.textContent = '✅';
-      backendText.textContent = `Connected`;
-      backendStatus.title = `Status: ${data.status || 'ok'}`;
-    } else if (backendStatus && backendIcon && backendText) {
-      backendStatus.classList.add('error');
-      backendIcon.textContent = '❌';
-      backendText.textContent = 'Backend unreachable';
-    }
-  } catch (error) {
-    if (backendStatus && backendIcon && backendText) {
-      backendStatus.classList.add('error');
-      backendIcon.textContent = '⚠️';
-      backendText.textContent = 'Backend connection failed';
-      backendStatus.title = 'Make sure HaloGuard backend is running';
-    }
-  }
-}
-
-/**
- * Show notification toast
- */
-function showNotification(message: string, type: 'success' | 'error' = 'success'): void {
-  if (!notificationEl) return;
-  
-  notificationEl.textContent = message;
-  notificationEl.className = `notification ${type}`;
-  notificationEl.style.display = 'block';
-  
-  // Auto-hide after 3 seconds
-  setTimeout(() => {
-    notificationEl.style.display = 'none';
-  }, 3000);
-  
-  console.log(`[Notification] ${type}: ${message}`);
-}
-
-/**
- * Setup event listeners
- */
-function setupEventListeners(): void {
-  // Save button
-  if (saveBtn) {
-    saveBtn.addEventListener('click', saveSettings);
+  constructor() {
+    this.initializeEventListeners();
+    this.loadData();
+    this.setupRefresh();
   }
 
-  // Threshold slider
-  if (thresholdSlider) {
-    thresholdSlider.addEventListener('input', (e) => {
-      const value = (e.target as HTMLInputElement).value;
-      updateThresholdDisplay(parseInt(value));
-    });
-  }
-
-  // Clear cache button
-  if (clearCacheBtn) {
-    clearCacheBtn.addEventListener('click', () => {
-      chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, (response) => {
-        if (response.error) {
-          showNotification('Failed to clear cache: ' + response.error, 'error');
-        } else {
-          showNotification('✓ Cache cleared!', 'success');
-        }
+  private initializeEventListeners() {
+    // Tab navigation
+    document.querySelectorAll('[data-tab]').forEach((tab) => {
+      tab.addEventListener('click', (e) => {
+        const tabName = (e.target as HTMLElement).getAttribute('data-tab');
+        if (tabName) this.switchTab(tabName);
       });
     });
+
+    // Action buttons
+    document.getElementById('scan-btn')?.addEventListener('click', () => this.scanCurrentPage());
+    document.getElementById('clear-btn')?.addEventListener('click', () => this.clearHistory());
+    document.getElementById('refresh-btn')?.addEventListener('click', () => this.loadData());
   }
 
-  // Open docs button
-  if (openDocsBtn) {
-    openDocsBtn.addEventListener('click', () => {
-      chrome.tabs.create({ url: 'https://github.com/haloguard/docs#readme' });
+  private async loadData() {
+    try {
+      this.analyses = await HaloGuardAPI.getAnalysisHistory();
+      this.metrics = await HaloGuardAPI.getDashboardMetrics();
+      this.render();
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    }
+  }
+
+  private setupRefresh() {
+    setInterval(() => this.loadData(), 2000);
+  }
+
+  private switchTab(tabName: string) {
+    this.currentTab = tabName;
+    document.querySelectorAll('[data-tab-content]').forEach((content) => {
+      (content as HTMLElement).style.display = 'none';
     });
+    const activeContent = document.getElementById(`${tabName}-content`);
+    if (activeContent) activeContent.style.display = 'block';
+    this.render();
   }
 
-  // Dark mode toggle
-  if (darkModeCheckbox) {
-    darkModeCheckbox.addEventListener('change', () => {
-      saveSettings();
-    });
+  private render() {
+    this.renderStatusBar();
+    this.renderMainContent();
   }
 
-  // Auto-analyze toggle
-  if (autoAnalyzeCheckbox) {
-    autoAnalyzeCheckbox.addEventListener('change', saveSettings);
+  private renderStatusBar() {
+    const statusBar = document.getElementById('status-bar');
+    if (!statusBar || !this.metrics) return;
+
+    statusBar.innerHTML = `
+      <div class="status-left">
+        <div class="logo">🛡️</div>
+        <div class="brand">HALOGUARD</div>
+      </div>
+      <div class="status-center">
+        <span class="status-badge active">🟢 REAL-TIME MONITORING: ACTIVE</span>
+      </div>
+      <div class="status-right">
+        <div class="metric">
+          <span class="label">Threats</span>
+          <span class="value">${this.metrics.threatsBlocked}</span>
+        </div>
+        <div class="metric">
+          <span class="label">Exposure</span>
+          <span class="value">${this.metrics.dataExposure}</span>
+        </div>
+        <div class="metric">
+          <span class="label">Traffic</span>
+          <span class="value">${this.metrics.networkTraffic}</span>
+        </div>
+      </div>
+    `;
   }
 
-  // Show badge toggle
-  if (showBadgeCheckbox) {
-    showBadgeCheckbox.addEventListener('change', saveSettings);
+  private renderMainContent() {
+    const content = document.getElementById('main-content');
+    if (!content) return;
+
+    if (this.currentTab === 'dashboard') {
+      content.innerHTML = this.renderDashboard();
+    } else if (this.currentTab === 'reports') {
+      content.innerHTML = this.renderReports();
+    } else if (this.currentTab === 'settings') {
+      content.innerHTML = this.renderSettings();
+    }
   }
 
-  // Backend URL input - save when blurred
-  if (backendUrlInput) {
-    backendUrlInput.addEventListener('blur', () => {
-      if (backendUrlInput.value !== '') {
-        saveSettings();
-        // Recheck health with new URL
-        setTimeout(checkBackendHealth, 500);
-      }
-    });
+  private renderDashboard(): string {
+    const latest = this.analyses[0];
+
+    return `
+      <div class="dashboard-content">
+        <div class="live-insights">
+          <h3>📊 LIVE INSIGHTS</h3>
+          ${
+            latest
+              ? `
+            <div class="scan-result ${latest.riskLevel}">
+              <div class="risk-indicator">
+                ${this.getRiskEmoji(latest.riskLevel)} ${latest.riskLevel.toUpperCase()}
+              </div>
+              <div class="confidence">Confidence: ${(latest.confidence * 100).toFixed(0)}%</div>
+              <div class="url">${latest.url}</div>
+              <div class="summary">${latest.summary}</div>
+              ${
+                latest.findings.length > 0
+                  ? `
+                <div class="findings">
+                  <strong>Findings:</strong>
+                  <ul>${latest.findings.map((f) => `<li>${f}</li>`).join('')}</ul>
+                </div>
+              `
+                  : ''
+              }
+              <div class="tiers">
+                <strong>Tier Breakdown:</strong>
+                ${latest.tiers.map((t) => `
+                  <div class="tier tier-${t.status}">
+                    <span class="tier-icon">${this.getTierIcon(t.status)}</span>
+                    <span class="tier-name">Tier ${t.tier}: ${t.name}</span>
+                    <span class="tier-confidence">${(t.confidence * 100).toFixed(0)}%</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `
+              : `<p class="empty">No recent analysis. Click "Scan Current Page" to start.</p>`
+          }
+        </div>
+
+        <div class="recent-activity">
+          <h3>📋 RECENT ACTIVITY</h3>
+          ${
+            this.analyses.length > 0
+              ? `
+            <div class="activity-list">
+              ${this.analyses
+                .slice(0, 5)
+                .map(
+                  (a) => `
+                <div class="activity-item ${a.riskLevel}">
+                  <div class="time">${new Date(a.timestamp).toLocaleTimeString()}</div>
+                  <div class="title">${a.riskLevel.toUpperCase()}: ${a.url.split('/').pop() || 'Page'}</div>
+                  <div class="summary">${a.summary}</div>
+                </div>
+              `
+                )
+                .join('')}
+            </div>
+          `
+              : `<p class="empty">No activity yet.</p>`
+          }
+        </div>
+
+        <div class="quick-actions">
+          <button id="scan-btn" class="action-btn primary">🔍 Scan Current Page</button>
+          <button id="clear-btn" class="action-btn secondary">🗑️ Clear History</button>
+          <button id="refresh-btn" class="action-btn secondary">↻ Refresh</button>
+        </div>
+      </div>
+    `;
   }
 
-  // Re-check backend health every 30 seconds
-  setInterval(() => {
-    checkBackendHealth();
-  }, 30000);
+  private renderReports(): string {
+    return `
+      <div class="reports-content">
+        <h3>📈 Analysis Reports</h3>
+        ${
+          this.analyses.length > 0
+            ? `
+          <table class="reports-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>URL</th>
+                <th>Risk</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${this.analyses
+                .map(
+                  (a) => `
+                <tr>
+                  <td>${new Date(a.timestamp).toLocaleString()}</td>
+                  <td><small>${a.url}</small></td>
+                  <td><span class="risk-badge ${a.riskLevel}">${a.riskLevel}</span></td>
+                  <td>${(a.confidence * 100).toFixed(0)}%</td>
+                </tr>
+              `
+                )
+                .join('')}
+            </tbody>
+          </table>
+        `
+            : `<p class="empty">No reports available.</p>`
+        }
+      </div>
+    `;
+  }
+
+  private renderSettings(): string {
+    return `
+      <div class="settings-content">
+        <h3>⚙️ Settings</h3>
+        <label class="setting-item">
+          <input type="checkbox" id="auto-scan" checked>
+          <span>Auto-scan pages</span>
+        </label>
+        <label class="setting-item">
+          <input type="checkbox" id="notifications" checked>
+          <span>Show notifications</span>
+        </label>
+        <label class="setting-item">
+          <input type="checkbox" id="highlight" checked>
+          <span>Highlight issues</span>
+        </label>
+        <button class="action-btn secondary" id="save-settings">Save Settings</button>
+      </div>
+    `;
+  }
+
+  private async scanCurrentPage() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab.id) {
+      chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CONTENT' }, async (response) => {
+        if (response) {
+          const result = await HaloGuardAPI.analyzePage(response);
+          await HaloGuardAPI.saveAnalysis(result);
+          this.loadData();
+        }
+      });
+    }
+  }
+
+  private async clearHistory() {
+    if (confirm('Clear all analysis history?')) {
+      await HaloGuardAPI.clearHistory();
+      this.loadData();
+    }
+  }
+
+  private getRiskEmoji(level: string): string {
+    switch (level) {
+      case 'low':
+        return '🟢';
+      case 'medium':
+        return '🟡';
+      case 'high':
+        return '🟠';
+      case 'critical':
+        return '🔴';
+      default:
+        return '⚫';
+    }
+  }
+
+  private getTierIcon(status: string): string {
+    switch (status) {
+      case 'passed':
+        return '✓';
+      case 'warning':
+        return '⚠';
+      case 'failed':
+        return '✗';
+      case 'processing':
+        return '⏳';
+      default:
+        return '?';
+    }
+  }
 }
 
-// Auto-save settings when closing popup
-window.addEventListener('beforeunload', saveSettings);
+// Initialize dashboard when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  new PopupDashboard();
+});

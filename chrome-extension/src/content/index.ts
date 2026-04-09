@@ -1,90 +1,91 @@
 /**
- * HaloGuard - Content Script
- * Main entry point for content-side logic
+ * HaloGuard Content Script
+ * Injected into every page to analyze content and highlight issues
  */
 
-import { FetchInterceptor } from './interceptor';
-import { ResultsOverlay } from './overlay';
-import { PlatformDetector } from '../utils/platform';
-import { Logger } from '../utils/logger';
-import { StorageManager } from '../utils/storage';
-import { HaloGuardAPI } from '../utils/api';
+import { PageContent, ExtensionMessage } from '../types';
 
-class ContentScriptManager {
-  private overlay: ResultsOverlay | null = null;
-  private api = new HaloGuardAPI();
-  private storage = new StorageManager();
-
-  async init(): Promise<void> {
-    // Check if we're on a supported platform
-    const platform = PlatformDetector.detect();
-    if (!platform) {
-      Logger.debug('Unsupported platform, skipping initialization');
-      return;
-    }
-
-    Logger.info(`Starting on ${platform.name}`);
-
-    // Get settings
-    const settings = await this.storage.getSettings();
-    if (!settings.enabled) {
-      Logger.info('HaloGuard disabled in settings');
-      return;
-    }
-
-    // Initialize components
-    FetchInterceptor.init();
-    this.overlay = new ResultsOverlay();
-
-    // Listen for messages from background script
-    chrome.runtime.onMessage.addListener(
-      this.handleMessage.bind(this)
-    );
-
-    Logger.success(`Content script ready for ${platform.name}`);
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((request: ExtensionMessage, sender, sendResponse) => {
+  if (request.type === 'GET_PAGE_CONTENT') {
+    const content = getPageContent();
+    sendResponse(content);
   }
 
-  /**
-   * Handle messages from background/popup
-   */
-  private async handleMessage(
-    message: any,
-    sender: any,
-    sendResponse: (response?: any) => void
-  ): Promise<void> {
-    try {
-      const { type, payload } = message;
+  if (request.type === 'HIGHLIGHT_ISSUES') {
+    highlightIssues(request.payload);
+  }
+});
 
-      switch (type) {
-        case 'SHOW_RESULTS':
-          this.overlay?.show(payload);
-          sendResponse({ success: true });
-          break;
+/**
+ * Extract page content for analysis
+ */
+function getPageContent(): PageContent {
+  return {
+    url: window.location.href,
+    title: document.title,
+    text: document.body.innerText,
+    html: document.documentElement.innerHTML,
+    selectedText: window.getSelection()?.toString() || '',
+  };
+}
 
-        case 'HIDE_RESULTS':
-          this.overlay?.hide();
-          sendResponse({ success: true });
-          break;
+/**
+ * Highlight problematic elements on the page
+ */
+function highlightIssues(result: any) {
+  if (!result.findings || result.findings.length === 0) {
+    return;
+  }
 
-        case 'PING':
-          sendResponse({ pong: true });
-          break;
+  // Find and highlight form inputs, links, and suspicious elements
+  const inputElements = document.querySelectorAll('input, textarea, button, a');
 
-        default:
-          sendResponse({ error: 'Unknown message type' });
+  inputElements.forEach((element) => {
+    const text = element.textContent || (element as HTMLInputElement).value || '';
+
+    // Check if element text matches any findings
+    result.findings.forEach((finding: string) => {
+      if (text.toLowerCase().includes(finding.toLowerCase())) {
+        // Add warning styling
+        const warning = document.createElement('div');
+        warning.className = 'haloguard-warning';
+        warning.style.cssText = `
+          position: absolute;
+          background: #ff6600;
+          color: white;
+          padding: 4px 8px;
+          border-radius: 3px;
+          font-size: 11px;
+          z-index: 10000;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        `;
+        warning.textContent = '⚠️ Potential Issue';
+
+        const rect = element.getBoundingClientRect();
+        warning.style.left = rect.left + 'px';
+        warning.style.top = rect.top - 30 + 'px';
+        document.body.appendChild(warning);
+
+        // Also highlight the element itself
+        const originalBorder = (element as HTMLElement).style.border;
+        (element as HTMLElement).style.border = '2px solid #ff6600';
+
+        // Remove highlighting after 5 seconds
+        setTimeout(() => {
+          warning.remove();
+          (element as HTMLElement).style.border = originalBorder;
+        }, 5000);
       }
-    } catch (error) {
-      Logger.error(`Message handling error: ${error}`);
-      sendResponse({ error: String(error) });
-    }
-  }
+    });
+  });
 }
 
-// Initialize on document load
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    new ContentScriptManager().init();
+// Auto-scan on page load (optional - can be disabled in settings)
+window.addEventListener('load', () => {
+  chrome.storage.local.get(['autoScan'], (result) => {
+    if (result.autoScan !== false) {
+      chrome.runtime.sendMessage({ type: 'TRIGGER_AUTO_SCAN' });
+    }
   });
-} else {
-  new ContentScriptManager().init();
-}
+});
