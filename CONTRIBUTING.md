@@ -20,8 +20,8 @@ We are committed to providing a welcoming and inspiring community for all. Pleas
 
 ```bash
 # 1. Fork and clone the repository
-git clone https://github.com/YOUR_USERNAME/halogaurd.git
-cd halogaurd
+git clone https://github.com/YOUR_USERNAME/haloguard.git
+cd haloguard
 
 # 2. Install dependencies (monorepo)
 npm install

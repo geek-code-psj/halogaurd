@@ -3,7 +3,7 @@
  * Manages backend communication, authentication, and caching
  */
 
-const DEFAULT_API_URL = 'https://halogaurd-production.up.railway.app';
+const DEFAULT_API_URL = 'https://haloguard-production.up.railway.app';
 
 class ServiceWorkerManager {
   private apiUrl: string = DEFAULT_API_URL;

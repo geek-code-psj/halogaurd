@@ -287,7 +287,7 @@ npm run build
 
 # Verify package.json is correct
 cat package.json | grep -A3 '"name"'
-# Should output: "@geek-code-psj/halogaurd-sdk" or similar
+# Should output: "@geek-code-psj/haloguard-sdk" or similar
 ```
 
 #### Step 2: Authentication
@@ -322,7 +322,7 @@ npm publish
 npm publish --access=public
 
 # Verify publication
-npm view @geek-code-psj/halogaurd-sdk
+npm view @geek-code-psj/haloguard-sdk
 ```
 
 #### Step 4: Installation Verification
@@ -330,7 +330,7 @@ npm view @geek-code-psj/halogaurd-sdk
 Users can now install:
 
 ```bash
-npm install @geek-code-psj/halogaurd-sdk
+npm install @geek-code-psj/haloguard-sdk
 ```
 
 ### Usage Documentation
@@ -345,7 +345,7 @@ Keep `.npmrc` minimal and standard:
 Users should use standard npm configuration.
 
 ### Marketplace Details
-- **URL**: https://www.npmjs.com/package/@geek-code-psj/halogaurd-sdk
+- **URL**: https://www.npmjs.com/package/@geek-code-psj/haloguard-sdk
 - **Free Tier**: Public packages unlimited
 - **Scoped Packages**: Supported
 - **Access Control**: Public/private options
@@ -370,7 +370,7 @@ Railway is an all-in-one platform for deploying and managing Node.js apps.
 # In Railway dashboard:
 # 1. Click "Create New"
 # 2. Select "GitHub"
-# 3. Select "geek-code-psj/halogaurd" repository
+# 3. Select "geek-code-psj/haloguard" repository
 # 4. Select "shared-core" service (if monorepo)
 # 5. Click Deploy
 ```
@@ -443,14 +443,14 @@ docker-compose build python-worker
 ```
 # Backend
 NODE_ENV=production
-DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/halogaurd
+DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/haloguard
 REDIS_URL=redis://:${REDIS_PASSWORD}@cache:6379
 JWT_SECRET=${JWT_SECRET}
 API_KEY=${API_KEY}
 
 # Database
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-POSTGRES_DB=halogaurd
+POSTGRES_DB=haloguard
 
 # Redis
 REDIS_PASSWORD=${REDIS_PASSWORD}
@@ -558,8 +558,8 @@ docker run -d \
 # Install from Chrome Web Store and verify popup loads
 
 # 3. NPM SDK
-npm install @geek-code-psj/halogaurd-sdk
-node -e "const sdk = require('@geek-code-psj/halogaurd-sdk'); console.log(sdk)"
+npm install @geek-code-psj/haloguard-sdk
+node -e "const sdk = require('@geek-code-psj/haloguard-sdk'); console.log(sdk)"
 
 # 4. Backend Health
 curl https://your-deployment-url/api/health
@@ -613,10 +613,10 @@ vsce publish -p <TOKEN>
 
 ```bash
 # Deprecate problematic version
-npm deprecate @geek-code-psj/halogaurd-sdk@1.0.5 "Use 1.0.4 instead - critical bug"
+npm deprecate @geek-code-psj/haloguard-sdk@1.0.5 "Use 1.0.4 instead - critical bug"
 
 # Or unpublish (only within 72 hours)
-npm unpublish @geek-code-psj/halogaurd-sdk@1.0.5 --force
+npm unpublish @geek-code-psj/haloguard-sdk@1.0.5 --force
 ```
 
 ### Backend Rollback
@@ -718,7 +718,7 @@ LOG_LEVEL=debug npm run dev
 
 ### Support Resources
 
-- **Issues**: https://github.com/geek-code-psj/halogaurd/issues
+- **Issues**: https://github.com/geek-code-psj/haloguard/issues
 - **Documentation**: See [docs/](docs/) directory
 - **License/Billing**: See [docs/LICENSING_API_REFERENCE.md](docs/LICENSING_API_REFERENCE.md)
 

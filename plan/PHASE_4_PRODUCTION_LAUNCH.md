@@ -129,7 +129,7 @@ jobs:
 5. Configure GitHub notifications
 
 **UptimeRobot Configuration**:
-- Monitor: `https://halogaurd-production.up.railway.app/health`
+- Monitor: `https://haloguard-production.up.railway.app/health`
 - Interval: 5 minutes
 - Alert on: Down or slow (>2s)
 - Notification: Email + Slack
@@ -321,7 +321,7 @@ npm install -g artillery
 
 # Create load-test.yml
 targets:
-  - url: 'https://halogaurd-production.up.railway.app'
+  - url: 'https://haloguard-production.up.railway.app'
 
 scenarios:
   - name: "Analyze Endpoint"

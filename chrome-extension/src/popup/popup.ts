@@ -44,14 +44,14 @@ function loadSettings(): void {
       threshold: 50,
       showBadge: true,
       darkMode: false,
-      backendUrl: 'https://halogaurd-production.up.railway.app',
+      backendUrl: 'https://haloguard-production.up.railway.app',
     },
     (data) => {
       if (autoAnalyzeCheckbox) autoAnalyzeCheckbox.checked = data.autoAnalyze ?? true;
       if (showBadgeCheckbox) showBadgeCheckbox.checked = data.showBadge ?? true;
       if (thresholdSlider) thresholdSlider.value = data.threshold.toString();
       if (darkModeCheckbox) darkModeCheckbox.checked = data.darkMode ?? false;
-      if (backendUrlInput) backendUrlInput.value = data.backendUrl || 'https://halogaurd-production.up.railway.app';
+      if (backendUrlInput) backendUrlInput.value = data.backendUrl || 'https://haloguard-production.up.railway.app';
 
       updateThresholdDisplay(data.threshold);
 
@@ -74,7 +74,7 @@ function saveSettings(): void {
     threshold: parseInt(thresholdSlider?.value ?? '50'),
     showBadge: showBadgeCheckbox?.checked ?? true,
     darkMode: darkModeCheckbox?.checked ?? false,
-    backendUrl: backendUrlInput?.value || 'https://halogaurd-production.up.railway.app',
+    backendUrl: backendUrlInput?.value || 'https://haloguard-production.up.railway.app',
   };
 
   // Save to chrome storage
@@ -134,7 +134,7 @@ async function checkBackendHealth(): Promise<void> {
     const urlRes = await new Promise<any>((resolve) => {
       chrome.storage.sync.get('backendUrl', resolve);
     });
-    const url = urlRes.backendUrl || 'https://halogaurd-production.up.railway.app';
+    const url = urlRes.backendUrl || 'https://haloguard-production.up.railway.app';
 
     const response = await fetch(`${url}/health`, {
       signal: AbortSignal.timeout(3000),

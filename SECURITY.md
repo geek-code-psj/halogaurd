@@ -6,7 +6,7 @@ If you discover a security vulnerability in HaloGuard, please **DO NOT** open a 
 
 ### Private Disclosure
 
-Email: **security@halogaurd.dev** (or use GitHub Security Advisory form: "Report a vulnerability" button on Security tab)
+Email: **security@haloguard.dev** (or use GitHub Security Advisory form: "Report a vulnerability" button on Security tab)
 
 Include:
 - Description of the vulnerability
@@ -231,7 +231,7 @@ We follow the 90-day responsible disclosure standard:
 
 | Role | Contact |
 |------|---------|
-| **Security Team** | security@halogaurd.dev |
+| **Security Team** | security@haloguard.dev |
 | **GitHub** | Use Security Advisory on GitHub |
 | **Bug Bounty** | Not currently active |
 

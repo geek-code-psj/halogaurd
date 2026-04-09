@@ -60,9 +60,9 @@
 ## 🔗 Important Links
 
 ### Production
-- **Backend API**: https://halogaurd-production.up.railway.app (port 8080)
+- **Backend API**: https://haloguard-production.up.railway.app (port 8080)
 - **Railway Dashboard**: https://railway.app
-- **GitHub Repo**: https://github.com/geek-code-psj/halogaurd
+- **GitHub Repo**: https://github.com/geek-code-psj/haloguard
 - **Database**: Supabase (pooler: aws-1-ap-northeast-2.pooler.supabase.com:5432)
 
 ### Local Development
@@ -328,7 +328,7 @@ docker-compose up -d
 3. Git push: `git push`
 4. Railway auto-deploys (check dashboard)
 5. Wait 2-3 min for deployment
-6. Test in production: `curl https://halogaurd-production.up.railway.app/health`
+6. Test in production: `curl https://haloguard-production.up.railway.app/health`
 
 ---
 

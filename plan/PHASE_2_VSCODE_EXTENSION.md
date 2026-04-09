@@ -312,7 +312,7 @@ export class HoverProvider implements vscode.HoverProvider {
     "properties": {
       "haloguard.apiUrl": {
         "type": "string",
-        "default": "https://halogaurd-production.up.railway.app",
+        "default": "https://haloguard-production.up.railway.app",
         "description": "HaloGuard backend API URL"
       },
       "haloguard.apiKey": {

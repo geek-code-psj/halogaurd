@@ -74,8 +74,8 @@ Available on multiple platforms:
 
 ```bash
 # Clone and run with Docker
-git clone https://github.com/geek-code-psj/halogaurd.git
-cd halogaurd
+git clone https://github.com/geek-code-psj/haloguard.git
+cd haloguard
 docker-compose up -d
 ```
 

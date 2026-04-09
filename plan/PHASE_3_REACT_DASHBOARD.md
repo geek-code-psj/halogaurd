@@ -615,7 +615,7 @@ CMD ["serve", "-s", "dist", "-l", "3000"]
 
 **Railway Deployment**:
 1. Connect GitHub repo
-2. Set environment: `VITE_API_URL=https://halogaurd-production.up.railway.app`
+2. Set environment: `VITE_API_URL=https://haloguard-production.up.railway.app`
 3. Build command: `npm run build`
 4. Start command: `npm run preview`
 5. Port: `3000`

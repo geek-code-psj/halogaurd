@@ -351,7 +351,7 @@ function displayOverlay(results: AnalysisResult) {
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[HaloGuard] Extension installed');
   chrome.storage.local.set({
-    apiUrl: 'https://halogaurd-production.up.railway.app',
+    apiUrl: 'https://haloguard-production.up.railway.app',
     theme: 'light'
   });
 });
@@ -466,7 +466,7 @@ Detailed Description:
 Category: Productivity
 Language: English
 Pricing: Free
-Privacy Policy URL: https://github.com/geek-code-psj/halogaurd/blob/main/SECURITY.md
+Privacy Policy URL: https://github.com/geek-code-psj/haloguard/blob/main/SECURITY.md
 ```
 
 ---

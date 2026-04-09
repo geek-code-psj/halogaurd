@@ -124,7 +124,7 @@ export function detectPlatform() {
  * Extract message from element using platform-specific selectors
  */
 export function extractMessageFromElement(el: Element, adapter: typeof ChatGPTAdapter) {
-  const messageText = el.textContent || el.innerText || '';
+  const messageText = el.textContent || (el as HTMLElement).innerText || '';
   const messageId = el.getAttribute('data-message-id') || el.id || '';
   
   try {
@@ -258,7 +258,7 @@ export function updateSidebar(results: any) {
   content.innerHTML = results.issues.map((issue: any) => `
     <div style="
       background: rgba(255,255,255,0.05);
-      border-left: 3px solid ${issueColors[issue.severity] || '#888'};
+      border-left: 3px solid ${issueColors[issue.severity as keyof typeof issueColors] || '#888'};
       padding: 10px 12px;
       margin-bottom: 8px;
       border-radius: 3px;
@@ -269,7 +269,7 @@ export function updateSidebar(results: any) {
         text-transform: uppercase;
         margin-bottom: 6px;
         font-size: 10px;
-        color: ${issueColors[issue.severity] || '#888'};
+        color: ${issueColors[issue.severity as keyof typeof issueColors] || '#888'};
         letter-spacing: 0.5px;
       ">
         ${issue.severity}: ${issue.type}

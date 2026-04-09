@@ -1,0 +1,76 @@
+/**
+ * HaloGuard Chrome Extension - Type Definitions
+ */
+
+export interface DetectionRequest {
+  requestId: string;
+  content: string;
+  contentHash: string;
+  platform: string;
+  timestamp: number;
+  sourceUrl: string;
+  model?: string;
+  context?: string;
+  conversationHistory?: Array<{ role: string; content: string }>;
+  metadata?: {
+    platform?: string;
+    language?: string;
+    userId?: string;
+  };
+}
+
+export interface DetectionIssue {
+  id: string;
+  type: 'hedging' | 'sycophancy' | 'factual_error' | 'ood_prediction' | 'semantic_drift' | 'context_insensitivity';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  tier: 0 | 1 | 2 | 3 | 4;
+  score: number;
+  confidence: number;
+  description: string;
+  message?: string;
+  evidence?: {
+    text?: string;
+    fact?: string;
+    source?: string;
+    nliScore?: number;
+  };
+  suggestions?: string[];
+}
+
+export interface DetectionResponse {
+  requestId: string;
+  processed: boolean;
+  latency: number;
+  issues: DetectionIssue[];
+  overallScore: number;
+  flagged: boolean;
+  syncProcessed: boolean;
+  asyncRemaining?: string[];
+}
+
+export interface SessionData {
+  sessionId: string;
+  platform: string;
+  createdAt: string;
+  analysisCount: number;
+}
+
+export interface CachedResult {
+  contentHash: string;
+  response: DetectionResponse;
+  timestamp: number;
+  ttl: number;
+}
+
+export interface ExtensionMessage {
+  type: 'ANALYZE_CONTENT' | 'GET_SESSION' | 'HEALTH_CHECK' | 'SHOW_RESULTS' | 'HIDE_RESULTS' | 'SHOW_ERROR' | 'PING' | 'analyze' | 'get_session' | 'save_setting' | 'get_setting' | 'analysis_result' | 'error';
+  payload?: any;
+  requestId?: string;
+}
+
+export interface AnalysisOverlay {
+  issueCount: number;
+  score: number;
+  flagged: boolean;
+  issues: DetectionIssue[];
+}

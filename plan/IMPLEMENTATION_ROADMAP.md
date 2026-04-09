@@ -87,7 +87,7 @@
            ↓
 ┌──────────────────────────────────────┐
 │   HaloGuard Backend API              │
-│   (halogaurd-production.up.railway.app)
+│   (haloguard-production.up.railway.app)
 │   - POST /api/v1/analyze             │
 │   - WebSocket connections            │
 └──────────────────────────────────────┘
@@ -274,7 +274,7 @@ shared-ui/
 - Chrome Web Store: https://chrome.google.com/webstore/search/haloguard
 - VS Code Marketplace: https://marketplace.visualstudio.com/items?itemName=HaloGuard.haloguard
 - Dashboard: https://haloguard-dashboard.up.railway.app
-- Backend API: https://halogaurd-production.up.railway.app
+- Backend API: https://haloguard-production.up.railway.app
 
 ---
 
