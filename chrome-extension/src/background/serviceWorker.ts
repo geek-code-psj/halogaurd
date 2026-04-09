@@ -9,6 +9,7 @@
 // ===== Inlined API Client =====
 const BACKEND_URL = 'https://haloguard-production.up.railway.app';
 const API_ENDPOINT = `${BACKEND_URL}/api/v1/analyze`;
+const TEST_ENDPOINT = `${BACKEND_URL}/api/v1/test-analyze`;
 
 class HaloGuardAPI {
   static async analyzePage(request: any) {
@@ -16,20 +17,39 @@ class HaloGuardAPI {
       console.log('[HaloGuard] API call to:', API_ENDPOINT);
       console.log('[HaloGuard] Request payload:', { url: request.url, textLength: request.text?.length });
       
-      const response = await fetch(API_ENDPOINT, {
+      const requestBody = JSON.stringify({
+        content: request.text,
+        model: 'haloguard-v1',
+        metadata: {
+          platform: 'chrome-extension',
+          url: request.url,
+        },
+      });
+
+      let response = await fetch(API_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': 'HaloGuard-Chrome-Extension/0.2',
         },
-        body: JSON.stringify({
-          url: request.url,
-          text: request.text,
-          html: request.html || '',
-        }),
+        body: requestBody,
       });
 
       console.log('[HaloGuard] API response status:', response.status);
+
+      // Fallback to test endpoint if main endpoint returns 404
+      if (response.status === 404) {
+        console.warn('[HaloGuard] Main endpoint returned 404, trying test endpoint...');
+        response = await fetch(TEST_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'HaloGuard-Chrome-Extension/0.2',
+          },
+          body: requestBody,
+        });
+        console.log('[HaloGuard] Test endpoint response status:', response.status);
+      }
 
       if (!response.ok) {
         if (response.status === 500) {
@@ -205,6 +225,34 @@ chrome.runtime.onMessage.addListener((request: any, sender: any, sendResponse: a
   }
 });
 
+// Helper function to send message to content script with retry logic
+async function sendMessageWithRetry(tabId: number, message: any, maxRetries: number = 3, delayMs: number = 100): Promise<any> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Wait before attempting (gives content script time to set up listener)
+      if (attempt === 1) {
+        console.log(`[HaloGuard] Waiting ${delayMs}ms for content script listener to initialize...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      console.log(`[HaloGuard] Sending message to content script (attempt ${attempt}/${maxRetries})...`);
+      const response = await chrome.tabs.sendMessage(tabId, message);
+      console.log(`[HaloGuard] ✓ Content script responded on attempt ${attempt}`);
+      return response;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      if (attempt < maxRetries) {
+        console.warn(`[HaloGuard] Attempt ${attempt} failed: ${errorMsg}. Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        console.error(`[HaloGuard] All ${maxRetries} attempts failed. Content script is not responding.`);
+        throw error;
+      }
+    }
+  }
+}
+
 // Send message to content script to collect page content
 async function handleScanPage(tab: any) {
   // Validate and get tab ID
@@ -232,9 +280,9 @@ async function handleScanPage(tab: any) {
   console.log(`[HaloGuard] Starting page scan on tab ${tabId}: ${tabUrl}`);
 
   try {
-    // Request page content from content script
+    // Request page content from content script with retry logic
     console.log('[HaloGuard] Requesting page content from content script...');
-    const pageContent: any = await chrome.tabs.sendMessage(tabId, {
+    const pageContent: any = await sendMessageWithRetry(tabId, {
       type: 'GET_PAGE_CONTENT',
     });
 

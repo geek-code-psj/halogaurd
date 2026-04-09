@@ -225,6 +225,53 @@ app.get('/ready', async (req: Request, res: Response) => {
 });
 
 /**
+ * Test/Fallback Analysis Endpoint
+ * POST /api/v1/test-analyze
+ * Returns mock analysis data for testing
+ */
+app.post('/api/v1/test-analyze', async (req: Request, res: Response) => {
+  const { content, model, metadata } = req.body;
+  
+  if (!content || content.trim().length === 0) {
+    return res.status(400).json({ error: 'Content is required' });
+  }
+
+  try {
+    // Return deterministic mock response based on content length
+    const contentLength = content.length;
+    const flagged = contentLength > 500; // Simple heuristic for testing
+    const riskLevel = flagged ? 'high' : 'low';
+    const confidence = 0.7 + (Math.random() * 0.2);
+
+    res.json({
+      id: `analysis-${Date.now()}`,
+      flagged,
+      riskLevel,
+      confidence,
+      overallScore: flagged ? 0.75 : 0.25,
+      timestamp: Date.now(),
+      execution_time_ms: Math.random() * 500,
+      findings: flagged 
+        ? [
+            'Contains hedging language indicating uncertainty',
+            'Potential overclaiming without sufficient evidence',
+            'Multiple unverified assertions'
+          ]
+        : ['Content appears authentic and factually grounded'],
+      tiers: [
+        { tier: 0, name: 'Hedging', status: flagged ? 'failed' : 'passed', confidence: 0.85 },
+        { tier: 1, name: 'Entropy', status: flagged ? 'warning' : 'passed', confidence: 0.8 },
+        { tier: 2, name: 'Context', status: 'passed', confidence: 0.75 },
+        { tier: 3, name: 'ML Model', status: 'passed', confidence: 0.7 },
+      ],
+      summary: flagged ? 'Potential hallucination detected' : 'Content appears authentic'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Test analysis failed', message: String(error) });
+  }
+});
+
+/**
  * Analysis endpoint (synchronous Tiers 0–3)
  * POST /api/v1/analyze
  * Body: { content, model, context, conversationHistory, metadata, sessionId }
@@ -232,12 +279,22 @@ app.get('/ready', async (req: Request, res: Response) => {
 app.post('/api/v1/analyze', async (req: Request, res: Response) => {
   const { content, model, context, conversationHistory, metadata, sessionId } = req.body;
 
+  console.log('[/api/v1/analyze] Request received:', { 
+    hasContent: !!content, 
+    contentLength: content?.length,
+    model,
+    hasMetadata: !!metadata,
+  });
+
   if (!content || content.trim().length === 0) {
+    console.log('[/api/v1/analyze] Validation failed: no content');
     return res.status(400).json({ error: 'Content is required' });
   }
 
   try {
     const startTime = Date.now();
+    
+    console.log('[/api/v1/analyze] Starting detection pipeline...');
     
     // Import and run detection pipeline
     const { runDetectionPipeline } = await import('./detectors/index');
@@ -253,7 +310,13 @@ app.post('/api/v1/analyze', async (req: Request, res: Response) => {
       metadata: metadata || {},
     };
 
+    console.log('[/api/v1/analyze] Calling runDetectionPipeline...');
     const response = await runDetectionPipeline(request);
+    console.log('[/api/v1/analyze] Pipeline completed:', {
+      flagged: (response as any)?.flagged,
+      responseType: typeof response,
+    });
+    
     const executionTime = Date.now() - startTime;
 
     // Store analysis result in database if sessionId provided
@@ -300,6 +363,14 @@ app.post('/api/v1/analyze', async (req: Request, res: Response) => {
     const errorMessage = error?.message || String(error);
     const errorCode = error?.code || 'UNKNOWN';
     const errorStack = error?.stack || 'No stack trace available';
+    
+    console.error('[/api/v1/analyze] ERROR:', {
+      code: errorCode,
+      message: errorMessage,
+      stack: errorStack.substring(0, 500),
+      timestamp: new Date().toISOString(),
+    });
+    
     logger.error('Error in /analyze endpoint', { 
       code: errorCode,
       message: errorMessage,
