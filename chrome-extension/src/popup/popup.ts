@@ -22,33 +22,59 @@ class PopupDashboard {
   private currentTab: string = 'dashboard';
 
   constructor() {
+    console.log('[HaloGuard Popup] Initializing PopupDashboard');
     this.initializeEventListeners();
+    console.log('[HaloGuard Popup] Event listeners initialized');
     this.loadData();
     this.setupRefresh();
+    console.log('[HaloGuard Popup] Dashboard ready');
   }
 
   private initializeEventListeners() {
-    // Tab navigation
-    document.querySelectorAll('[data-tab]').forEach((tab) => {
-      tab.addEventListener('click', (e) => {
-        const tabName = (e.target as HTMLElement).getAttribute('data-tab');
+    console.log('[HaloGuard Popup] Setting up event delegation');
+    // Use event delegation on document so listeners survive re-renders
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      
+      // Tab navigation
+      if (target.hasAttribute('data-tab')) {
+        const tabName = target.getAttribute('data-tab');
+        console.log('[HaloGuard Popup] Tab clicked:', tabName);
         if (tabName) this.switchTab(tabName);
-      });
+      }
+      
+      // Action buttons - use ID matching with event delegation
+      if (target.id === 'scan-btn' || target.closest('#scan-btn')) {
+        console.log('[HaloGuard Popup] Scan button clicked via event delegation');
+        e.preventDefault();
+        this.scanCurrentPage();
+      }
+      if (target.id === 'clear-btn' || target.closest('#clear-btn')) {
+        console.log('[HaloGuard Popup] Clear button clicked via event delegation');
+        e.preventDefault();
+        this.clearHistory();
+      }
+      if (target.id === 'refresh-btn' || target.closest('#refresh-btn')) {
+        console.log('[HaloGuard Popup] Refresh button clicked via event delegation');
+        e.preventDefault();
+        this.loadData();
+      }
     });
-
-    // Action buttons
-    document.getElementById('scan-btn')?.addEventListener('click', () => this.scanCurrentPage());
-    document.getElementById('clear-btn')?.addEventListener('click', () => this.clearHistory());
-    document.getElementById('refresh-btn')?.addEventListener('click', () => this.loadData());
   }
 
   private async loadData() {
     try {
+      console.log('[HaloGuard Popup] Loading data from background...');
       this.analyses = await sendToBackground('GET_ANALYSIS_HISTORY');
+      console.log('[HaloGuard Popup] Got analysis history:', { count: Object.keys(this.analyses || {}).length });
+      
       this.metrics = await sendToBackground('GET_METRICS');
+      console.log('[HaloGuard Popup] Got metrics:', this.metrics);
+      
       this.render();
+      console.log('[HaloGuard Popup] Dashboard rendered');
     } catch (error) {
-      console.error('Failed to load data:', error);
+      console.error('[HaloGuard Popup] Failed to load data:', error);
     }
   }
 
@@ -251,23 +277,52 @@ class PopupDashboard {
   }
 
   private async scanCurrentPage() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.id) {
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CONTENT' }, async (pageContent) => {
-        if (pageContent) {
-          // Send to background service worker to analyze
-          await sendToBackground('SCAN_PAGE', { url: tab.url, id: tab.id });
-          // Reload data after a short delay
-          setTimeout(() => this.loadData(), 500);
-        }
-      });
+    console.log('[HaloGuard Popup] Scan button clicked');
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tabs.length) {
+        console.error('[HaloGuard Popup] No active tab found');
+        alert('Please make sure you have an active tab open');
+        return;
+      }
+
+      const tab = tabs[0];
+      console.log('[HaloGuard Popup] Active tab:', { id: tab.id, url: tab.url });
+
+      if (!tab.id) {
+        console.error('[HaloGuard Popup] Tab ID is invalid');
+        alert('Could not get current tab information');
+        return;
+      }
+
+      // Send scan request to background
+      console.log('[HaloGuard Popup] Sending SCAN_PAGE to background...');
+      await sendToBackground('SCAN_PAGE', { url: tab.url, id: tab.id });
+      console.log('[HaloGuard Popup] Scan request sent, waiting for response...');
+
+      // Reload data after a delay to see results
+      setTimeout(() => {
+        console.log('[HaloGuard Popup] Reloading data...');
+        this.loadData();
+      }, 1000);
+    } catch (error) {
+      console.error('[HaloGuard Popup] Scan failed:', error);
+      alert('Scan failed: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
 
   private async clearHistory() {
+    console.log('[HaloGuard Popup] Clear history button clicked');
     if (confirm('Clear all analysis history?')) {
-      await sendToBackground('CLEAR_HISTORY');
-      this.loadData();
+      try {
+        console.log('[HaloGuard Popup] Sending CLEAR_HISTORY to background...');
+        await sendToBackground('CLEAR_HISTORY');
+        console.log('[HaloGuard Popup] History cleared, reloading data...');
+        this.loadData();
+      } catch (error) {
+        console.error('[HaloGuard Popup] Clear history failed:', error);
+        alert('Failed to clear history: ' + (error instanceof Error ? error.message : String(error)));
+      }
     }
   }
 
