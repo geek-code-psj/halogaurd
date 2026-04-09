@@ -131,6 +131,20 @@ async function initializeBullMQQueues() {
 // ============ ROUTES ============
 
 /**
+ * Root endpoint - simple welcome
+ * GET /
+ */
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    status: 'online',
+    service: 'HaloGuard API',
+    version: '0.2.0',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+/**
  * Health check endpoint
  * GET /health
  */
