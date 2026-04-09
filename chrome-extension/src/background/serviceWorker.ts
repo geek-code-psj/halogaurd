@@ -7,7 +7,7 @@
  */
 
 // ===== Inlined API Client =====
-const BACKEND_URL = 'https://haloguard-production.up.railway.app';
+const BACKEND_URL = 'https://halogaurd-production.up.railway.app';
 const API_ENDPOINT = `${BACKEND_URL}/api/v1/analyze`;
 const TEST_ENDPOINT = `${BACKEND_URL}/api/v1/test-analyze`;
 
@@ -77,22 +77,22 @@ class HaloGuardAPI {
       }
 
       const data = await response.json();
-      console.log('[HaloGuard] API response data:', { flagged: data.flagged, issuesCount: data.issues?.length });
+      console.log('[HaloGuard] API response data:', { flagged: data.flagged, issuesCount: data.issues?.length || data.findings?.length });
       
       return {
-        id: `analysis-${Date.now()}`,
+        id: data.id || `analysis-${Date.now()}`,
         url: request.url,
-        timestamp: Date.now(),
-        riskLevel: data.flagged ? 'high' : 'low',
-        confidence: data.overallScore || 0.7,
-        findings: data.issues?.map((i: any) => i.description) || [],
-        tiers: data.issues?.map((i: any) => ({
+        timestamp: data.timestamp || Date.now(),
+        riskLevel: data.riskLevel || (data.flagged ? 'high' : 'low'),
+        confidence: data.confidence || data.overallScore || 0.7,
+        findings: data.findings || data.issues?.map((i: any) => i.description) || [],
+        tiers: data.tiers || data.issues?.map((i: any) => ({
           tier: i.tier,
           name: ['Hedging', 'Entropy', 'Context', 'ML Model', 'LLM'][i.tier],
           status: i.severity === 'critical' ? 'failed' : 'passed',
           confidence: i.confidence,
         })) || [],
-        summary: data.flagged ? 'Potential hallucinations detected' : 'Content appears authentic',
+        summary: data.summary || (data.flagged ? 'Potential hallucinations detected' : 'Content appears authentic'),
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
