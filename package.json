@@ -11,14 +11,14 @@
     "chrome-extension"
   ],
   "scripts": {
-    "lint": "turbo run lint --no-fail || true",
-    "type-check": "turbo run type-check --no-fail || true",
-    "test": "turbo run test --no-fail || true",
-    "build": "turbo run build --no-fail || true",
+    "lint": "turbo run lint --continue",
+    "type-check": "turbo run type-check --continue",
+    "test": "turbo run test --continue",
+    "build": "turbo run build --continue",
     "dev": "turbo run dev --parallel",
     "dev:backend": "cd shared-core && npm run dev",
     "dev:docker": "docker-compose up -d",
-    "preview": "turbo run preview --no-fail || true"
+    "preview": "turbo run preview --continue"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
