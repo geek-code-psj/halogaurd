@@ -5,7 +5,7 @@
  */
 
 import axios, { AxiosError } from 'axios';
-import Redis from 'redis';
+import Redis from 'ioredis';
 
 const WIKIPEDIA_API_BASE = 'https://en.wikipedia.org/w/api.php';
 const WIKIDATA_API_BASE = 'https://www.wikidata.org/w/api.php';
@@ -80,13 +80,12 @@ export class FactCheckError extends Error {
 
 export async function initRedisCache(url?: string) {
   try {
-    redisClient = Redis.createClient({
-      url: url || process.env.REDIS_URL || 'redis://localhost:6379',
-      socket: {
-        reconnectStrategy: (retries) => Math.min(retries * 50, 500),
-      },
+    redisClient = new Redis(url || process.env.REDIS_URL || 'redis://localhost:6379', {
+      retryStrategy: (times) => Math.min(times * 50, 500),
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
     });
-    await redisClient.connect();
+    // ioredis connects automatically, no need to call connect()
     console.log('✅ Redis cache initialized for fact-checking');
   } catch (error) {
     console.warn('⚠️ Redis unavailable, fact-checking will not be cached:', error);
