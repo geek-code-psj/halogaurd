@@ -217,14 +217,39 @@ export class SessionTracker {
   /**
    * Issue #12: Detect 100-message hallucination arc
    * Long conversations where claims progressively drift from ground truth
+   * PHASE 4: Enhanced to detect patterns across 100+ messages
    */
   private detectHallucinationArcs(): PatternDetection[] {
     const patterns: PatternDetection[] = [];
 
     if (this.turns.length < 5) return patterns;
 
-    // Measure drift between consecutive windows of assistant turns
     const assistantTurns = this.turns.filter((t) => t.role === "assistant");
+
+    // PHASE 4: For very long conversations (100+ messages), use early termination detection
+    if (assistantTurns.length >= 100) {
+      // Detect early signs of hallucination arc during long conversations
+      const earlyTerminationScore = this.detectEarlyHallucinationSignals(assistantTurns);
+
+      if (earlyTerminationScore > 0.7) {
+        patterns.push({
+          type: "hallucination_arc",
+          severity: "critical",
+          confidence: 0.9,
+          description: `CRITICAL: Hallucination arc EARLY DETECTION in ${assistantTurns.length}-message conversation. Early termination recommended.`,
+          evidenceIndices: [0, Math.floor(assistantTurns.length / 4)],
+          details: {
+            totalAssistantTurns: assistantTurns.length,
+            earlyWarningScore: earlyTerminationScore,
+            recommendation: "Stop conversation and fact-check recent claims immediately",
+          },
+        });
+
+        return patterns; // Return early for long conversations
+      }
+    }
+
+    // Measure drift between consecutive windows of assistant turns
     const windowSize = Math.max(2, Math.floor(assistantTurns.length / 3));
 
     let maxDrift = 0;
@@ -265,6 +290,79 @@ export class SessionTracker {
     }
 
     return patterns;
+  }
+
+  /**
+   * PHASE 4: Detect early hallucination signals in long conversations
+   * Even if not yet drifting, certain patterns predict hallucination arc
+   */
+  private detectEarlyHallucinationSignals(assistantTurns: TurnRecord[]): number {
+    if (assistantTurns.length < 10) return 0;
+
+    let signals = 0;
+
+    // Signal 1: Increasing specificity (making more detailed claims)
+    const firstFiveAvgClaims = assistantTurns
+      .slice(0, 5)
+      .reduce((sum, t) => sum + t.extractedClaims.length, 0) / 5;
+    const lastFiveAvgClaims = assistantTurns
+      .slice(-5)
+      .reduce((sum, t) => sum + t.extractedClaims.length, 0) / 5;
+
+    if (lastFiveAvgClaims > firstFiveAvgClaims * 1.5) {
+      signals += 0.3; // Strong signal
+    }
+
+    // Signal 2: Entity confusion (same entity with different properties)
+    const entityPropertyMap = new Map<string, Set<string>>();
+    let contradictions = 0;
+
+    for (const turn of assistantTurns.slice(-Math.floor(assistantTurns.length / 3))) {
+      for (const entity of turn.entitiesReferenced) {
+        for (const [prop, value] of entity.properties) {
+          const key = `${entity.entity}:${prop}`;
+          if (!entityPropertyMap.has(key)) {
+            entityPropertyMap.set(key, new Set());
+          }
+          entityPropertyMap.get(key)!.add(value);
+        }
+      }
+    }
+
+    for (const values of entityPropertyMap.values()) {
+      if (values.size > 1) {
+        contradictions++;
+      }
+    }
+
+    if (contradictions > 3) {
+      signals += 0.3; // Entity confusion detected
+    }
+
+    // Signal 3: Semantic drift accelerating
+    if (assistantTurns.length >= 20) {
+      const firstHalfDrift = this.calculateWindowDrift(
+        assistantTurns.slice(0, Math.floor(assistantTurns.length / 4)),
+        assistantTurns.slice(
+          Math.floor(assistantTurns.length / 4),
+          Math.floor(assistantTurns.length / 2)
+        )
+      );
+
+      const secondHalfDrift = this.calculateWindowDrift(
+        assistantTurns.slice(
+          Math.floor(assistantTurns.length / 2),
+          Math.floor((assistantTurns.length * 3) / 4)
+        ),
+        assistantTurns.slice(Math.floor((assistantTurns.length * 3) / 4))
+      );
+
+      if (secondHalfDrift > firstHalfDrift * 1.2) {
+        signals += 0.4; // Accelerating drift
+      }
+    }
+
+    return Math.min(signals, 1.0);
   }
 
   /**

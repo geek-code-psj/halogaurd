@@ -1,9 +1,11 @@
 /**
  * TIER 0: Fast Regex + Hedging Language Detection (10ms)
+ * PHASE 2 ENHANCEMENT: Domain-aware hedging thresholds
  * Detects linguistic markers of uncertainty and hedging language
  */
 
 import { DetectionIssue, DetectionRequest } from "../types/detector";
+import { classifyDomain, getDomainHedgingBaseline, adjustConfidenceForDomain } from "../utils/domain-classifier";
 
 // Hedging language patterns (research-backed)
 const HEDGING_PATTERNS = {
@@ -28,6 +30,10 @@ export async function detectTier0(request: DetectionRequest): Promise<DetectionI
   const content = request.content;
   const sentences = content.match(/[^.!?]+[.!?]+/g) || [content];
 
+  // PHASE 2: Classify domain for context-aware thresholds
+  const domainContext = classifyDomain(content);
+  const domainHedgingBaseline = getDomainHedgingBaseline(domainContext.domain);
+
   let hedgingScore = 0;
   let sycophancyScore = 0;
   let assertivenessScore = 0;
@@ -40,7 +46,11 @@ export async function detectTier0(request: DetectionRequest): Promise<DetectionI
     const qualifierMatches = sentence.match(HEDGING_PATTERNS.qualifiers) || [];
     const certaintyCounts = sentence.match(HEDGING_PATTERNS.absence_of_certainty) || [];
 
-    totalHedgingMarkers += hedgingMatches.length + uncertaintyMatches.length + qualifierMatches.length + certaintyCounts.length;
+    totalHedgingMarkers +=
+      hedgingMatches.length +
+      uncertaintyMatches.length +
+      qualifierMatches.length +
+      certaintyCounts.length;
 
     hedgingScore +=
       hedgingMatches.length * 0.2 +
@@ -66,16 +76,18 @@ export async function detectTier0(request: DetectionRequest): Promise<DetectionI
   const avgSycophancyScore = Math.min(sycophancyScore / sentences.length, 1.0);
   const assertivenessRatio = assertivenessScore / sentences.length;
 
-  // If low assertiveness + high hedging = potential hallucination masking
-  if (avgHedgingScore > 0.3 && assertivenessRatio < 0.1) {
+  // PHASE 2 FIX: Use domain-aware hedging threshold instead of fixed 0.3
+  // If hedging is above domain baseline + low assertiveness = potential hallucination masking
+  const hedgingThreshold = Math.max(domainHedgingBaseline, 0.15); // Never below 0.15
+  if (avgHedgingScore > hedgingThreshold && assertivenessRatio < 0.1) {
     issues.push({
       id: `tier0_hedging_${Date.now()}`,
       type: "hedging",
-      severity: avgHedgingScore > 0.6 ? "high" : "medium",
+      severity: avgHedgingScore > hedgingThreshold + 0.3 ? "high" : "medium",
       tier: 0,
       score: avgHedgingScore,
-      confidence: Math.min(avgHedgingScore * 0.9, 0.95),
-      message: `High hedging language detected. ${totalHedgingMarkers} uncertainty markers found.`,
+      confidence: adjustConfidenceForDomain(Math.min(avgHedgingScore * 0.9, 0.95), domainContext.domain, domainContext),
+      message: `Hedging language detected (domain: ${domainContext.domain}, threshold: ${(hedgingThreshold * 100).toFixed(0)}%, actual: ${(avgHedgingScore * 100).toFixed(0)}%). ${totalHedgingMarkers} uncertainty markers found.`,
       evidence: {
         text: content.substring(0, 100),
       },
@@ -95,8 +107,8 @@ export async function detectTier0(request: DetectionRequest): Promise<DetectionI
       severity: avgSycophancyScore > 0.25 ? "high" : "medium",
       tier: 0,
       score: avgSycophancyScore,
-      confidence: Math.min(avgSycophancyScore * 0.85, 0.9),
-      message: `Excessive agreement/praise detected. May indicate sycophancy bias.`,
+      confidence: adjustConfidenceForDomain(Math.min(avgSycophancyScore * 0.85, 0.9), domainContext.domain, domainContext),
+      message: `Excessive agreement/praise detected (domain: ${domainContext.domain}). May indicate sycophancy bias.`,
       suggestions: [
         "Question the analysis - ask for counterpoints",
         "Request critical evaluation",

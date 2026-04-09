@@ -10,10 +10,17 @@ import { detectTier3 } from "./tier3";
 import { detectTier4 } from "./tier4";
 import { DetectionRequest, DetectionResponse, DetectionIssue } from "../types/detector";
 import { SessionTracker } from "../utils/session-tracker";
+import { validateDetectionRequest, PerUserRateLimiter, resolveTierConflicts, sanitizeOutput } from "../utils/validation";
+import { classifyDomain } from "../utils/domain-classifier";
+
+// PHASE 3: Per-user rate limiter (not IP-based)
+const ratelimiter = new PerUserRateLimiter();
 
 /**
  * Main detection pipeline
  * PHASE 1 FIX: Parallel execution - all tiers run simultaneously
+ * PHASE 2/4 FIX: Domain-aware processing and conflict resolution
+ * PHASE 3 FIX: Input validation, per-user rate limiting
  * No skipping on timeout - all tiers complete or timeout individually
  * Timeout data recovery - partial results returned, never empty
  * Conversation session threading - tracks multi-turn patterns
@@ -26,6 +33,65 @@ export async function runDetectionPipeline(
   const asyncTasks: string[] = [];
 
   try {
+    // PHASE 3: Input validation
+    const validation = validateDetectionRequest(request.content, request.conversationHistory);
+    if (!validation.valid) {
+      console.error("Request validation failed:", validation.errors);
+      return {
+        requestId: request.id,
+        processed: false,
+        latency: Date.now() - startTime,
+        issues: validation.errors.map((error) => ({
+          id: `validation_error_${Date.now()}`,
+          type: "factual_error",
+          severity: "critical",
+          tier: 0,
+          score: 1.0,
+          confidence: 1.0,
+          message: error,
+          evidence: {},
+        })),
+        overallScore: 1.0,
+        flagged: true,
+        syncProcessed: false,
+        asyncRemaining: [],
+      };
+    }
+
+    // Log validation warnings
+    if (validation.warnings.length > 0) {
+      console.warn("Request validation warnings:", validation.warnings);
+    }
+
+    // PHASE 3: Per-user rate limiting
+    const userId = request.metadata?.userId || request.id;
+    const rateLimitCheck = ratelimiter.checkLimit(userId);
+
+    if (!rateLimitCheck.allowed) {
+      console.warn(`Rate limit exceeded for user ${userId}. Retry after ${rateLimitCheck.retryAfterMs}ms`);
+      return {
+        requestId: request.id,
+        processed: false,
+        latency: Date.now() - startTime,
+        issues: [
+          {
+            id: `ratelimit_${Date.now()}`,
+            type: "factual_error",
+            severity: "high",
+            tier: 0,
+            score: 0.5,
+            confidence: 1.0,
+            message: `Rate limit exceeded. Please retry after ${Math.ceil(rateLimitCheck.retryAfterMs / 1000)} seconds.`,
+            evidence: {},
+          },
+        ],
+        overallScore: 0.5,
+        flagged: false,
+        syncProcessed: false,
+        asyncRemaining: [],
+      };
+    }
+
     // PHASE 1 FIX: Run Tiers 0-3 in parallel with individual timeouts
     // This prevents one tier from blocking others
     const [tier0Issues, tier1Issues, tier2Issues, tier3Issues] = await Promise.all([
@@ -77,14 +143,37 @@ export async function runDetectionPipeline(
 
     const totalLatency = Date.now() - startTime;
 
-    // Calculate severity aggregation
-    const overallScore = calculateOverallScore(issues);
+    // PHASE 3 FIX: Use tier conflict resolution instead of simple aggregation
+    // Calculate average scores per tier for conflict resolution
+    const tier0Score = tier0Issues.length > 0
+      ? tier0Issues.reduce((sum, i) => sum + i.score, 0) / tier0Issues.length
+      : 0;
+    const tier1Score = tier1Issues.length > 0
+      ? tier1Issues.reduce((sum, i) => sum + i.score, 0) / tier1Issues.length
+      : 0;
+    const tier2Score = tier2Issues.length > 0
+      ? tier2Issues.reduce((sum, i) => sum + i.score, 0) / tier2Issues.length
+      : 0;
+    const tier3Score = tier3Issues.length > 0
+      ? tier3Issues.reduce((sum, i) => sum + i.score, 0) / tier3Issues.length
+      : 0;
+
+    const conflict = resolveTierConflicts(tier0Score, tier1Score, tier2Score, tier3Score);
+    const overallScore = conflict.finalScore;
+
+    // Log conflict resolution if veto applied
+    if (conflict.veto !== "none") {
+      console.info(`[Tier Conflict Resolution] ${conflict.explanation}`);
+    }
+
+    // PHASE 3: Sanitize output to prevent info leakage
+    const sanitizedIssues = sanitizeOutput(issues);
 
     return {
       requestId: request.id,
       processed: true,
       latency: totalLatency,
-      issues,
+      issues: sanitizedIssues,
       overallScore,
       flagged: overallScore > 0.5,
       syncProcessed: true,
@@ -97,6 +186,7 @@ export async function runDetectionPipeline(
       processed: false,
       latency: Date.now() - startTime,
       issues: [],
+
       overallScore: 0,
       flagged: false,
       syncProcessed: false,
@@ -169,7 +259,7 @@ function analyzeConversationPattern(
       evidence: {
         text: pattern.details?.entity || pattern.description,
       },
-      suggestions: this.getSessionPatternSuggestions(pattern.type),
+      suggestions: getSessionPatternSuggestions(pattern.type),
     });
   }
 
