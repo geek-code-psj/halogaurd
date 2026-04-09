@@ -148,8 +148,10 @@ function highlightIssues(result: any) {
       let shouldHighlight = false;
 
       // Check if any findings are in this text
-      result.findings.forEach((finding: string) => {
-        if (text.toLowerCase().includes(finding.toLowerCase())) {
+      result.findings?.forEach((finding: any) => {
+        // Safely convert finding to string and check for null/undefined
+        const findingStr = finding ? String(finding).toLowerCase() : '';
+        if (findingStr && text.toLowerCase().includes(findingStr)) {
           shouldHighlight = true;
         }
       });
