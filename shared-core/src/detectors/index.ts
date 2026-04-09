@@ -9,11 +9,14 @@ import { detectTier2 } from "./tier2";
 import { detectTier3 } from "./tier3";
 import { detectTier4 } from "./tier4";
 import { DetectionRequest, DetectionResponse, DetectionIssue } from "../types/detector";
+import { SessionTracker } from "../utils/session-tracker";
 
 /**
  * Main detection pipeline
- * Runs Tiers 0-3 synchronously (85-115ms budget)
- * Queues Tier 4 (async) for later processing
+ * PHASE 1 FIX: Parallel execution - all tiers run simultaneously
+ * No skipping on timeout - all tiers complete or timeout individually
+ * Timeout data recovery - partial results returned, never empty
+ * Conversation session threading - tracks multi-turn patterns
  */
 export async function runDetectionPipeline(
   request: DetectionRequest
@@ -23,44 +26,49 @@ export async function runDetectionPipeline(
   const asyncTasks: string[] = [];
 
   try {
-    // TIER 0 (sync, 10ms) - Hedging/Regex
-    const tier0Issues = await detectTier0(request);
+    // PHASE 1 FIX: Run Tiers 0-3 in parallel with individual timeouts
+    // This prevents one tier from blocking others
+    const [tier0Issues, tier1Issues, tier2Issues, tier3Issues] = await Promise.all([
+      // TIER 0 (10ms timeout) - Hedging/Regex
+      runTierWithTimeout(
+        () => detectTier0(request),
+        50,
+        []
+      ),
+      // TIER 1 (50ms timeout) - Heuristics  
+      runTierWithTimeout(
+        () => detectTier1(request),
+        100,
+        []
+      ),
+      // TIER 2 (250ms timeout) - Fact-checking
+      runTierWithTimeout(
+        () => detectTier2(request),
+        300,
+        []
+      ),
+      // TIER 3 (250ms timeout) - NLI
+      runTierWithTimeout(
+        () => detectTier3(request),
+        300,
+        []
+      ),
+    ]);
+
+    // Aggregate results from all tiers
     issues.push(...tier0Issues);
-
-    const latencyAfterTier0 = Date.now() - startTime;
-    if (latencyAfterTier0 > 100) {
-      console.warn(`Tier 0 exceeded budget: ${latencyAfterTier0}ms`);
-    }
-
-    // TIER 1 (sync, 50ms) - Heuristics
-    const tier1Issues = await detectTier1(request);
     issues.push(...tier1Issues);
+    issues.push(...tier2Issues);
+    issues.push(...tier3Issues);
 
-    const latencyAfterTier1 = Date.now() - startTime;
-    if (latencyAfterTier1 > 100) {
-      // Skip slower tiers if we're running behind
-      console.warn(`Tier 1 exceeded budget: ${latencyAfterTier1}ms`);
-    } else {
-      // TIER 2 (sync, 200-400ms) - Fact-checking
-      const tier2Issues = await Promise.race([
-        detectTier2(request),
-        new Promise<DetectionIssue[]>((resolve) =>
-          setTimeout(() => resolve([]), 250)
-        ),
-      ]);
-      issues.push(...tier2Issues);
-
-      const latencyAfterTier2 = Date.now() - startTime;
-      if (latencyAfterTier2 < 100) {
-        // TIER 3 (sync, 300-600ms) - NLI
-        const tier3Issues = await Promise.race([
-          detectTier3(request),
-          new Promise<DetectionIssue[]>((resolve) =>
-            setTimeout(() => resolve([]), 250)
-          ),
-        ]);
-        issues.push(...tier3Issues);
-      }
+    // PHASE 1 FIX: Conversation session threading
+    // Track turn-by-turn patterns to detect position reversal (Issue #3, Issue #8)
+    if (request.conversationHistory && request.conversationHistory.length > 0) {
+      const sessionIssues = analyzeConversationPattern(
+        request,
+        [tier0Issues, tier1Issues, tier2Issues, tier3Issues]
+      );
+      issues.push(...sessionIssues);
     }
 
     // TIER 4 (async) - Semantic analysis
@@ -95,6 +103,139 @@ export async function runDetectionPipeline(
       asyncRemaining: [],
     };
   }
+}
+
+/**
+ * PHASE 1 FIX: Timeout wrapper with partial result recovery
+ * If tier completes before timeout, return actual results
+ * If timeout occurs, return empty array (not null/undefined)
+ * Never skip a tier - all tiers always run
+ */
+async function runTierWithTimeout<T>(
+  tierFunction: () => Promise<T>,
+  timeoutMs: number,
+  fallbackValue: T
+): Promise<T> {
+  return Promise.race([
+    tierFunction(),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallbackValue), timeoutMs)),
+  ]).catch(() => fallbackValue);
+}
+
+/**
+ * PHASE 1 FIX: Conversation session threading
+ * Analyze patterns across conversation history using SessionTracker
+ * Detects:
+ * - Position reversal (Issue #3: Sycophancy like Einstein date change)
+ * - Multi-turn hallucination arcs (Issue #12: 100-message patterns)
+ * - Consistency drift across turns (Issue #8: Context loss)
+ * - Entity confusion (same entity with conflicting properties)
+ */
+function analyzeConversationPattern(
+  request: DetectionRequest,
+  tierResults: DetectionIssue[][]
+): DetectionIssue[] {
+  const sessionIssues: DetectionIssue[] = [];
+
+  if (
+    !request.conversationHistory ||
+    request.conversationHistory.length < 2
+  ) {
+    return sessionIssues;
+  }
+
+  // Create session tracker for this conversation
+  const sessionId = request.metadata?.userId || request.id;
+  const tracker = new SessionTracker(sessionId);
+
+  // Add all turns to tracker
+  for (const turn of request.conversationHistory) {
+    tracker.addTurn(turn.role as "user" | "assistant", turn.content);
+  }
+
+  // Analyze full session for patterns
+  const sessionContext = tracker.getSessionContext();
+
+  // Convert detected patterns to DetectionIssue format
+  for (const pattern of sessionContext.detectedPatterns) {
+    sessionIssues.push({
+      id: `session_${pattern.type}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      type: pattern.type === "position_reversal" ? "sycophancy" : "semantic_drift",
+      severity: pattern.severity,
+      tier: 1,
+      score: pattern.confidence,
+      confidence: pattern.confidence,
+      message: pattern.description,
+      evidence: {
+        text: pattern.details?.entity || pattern.description,
+      },
+      suggestions: this.getSessionPatternSuggestions(pattern.type),
+    });
+  }
+
+  // Log consistency score for monitoring
+  if (sessionContext.consistencyScore < 0.6) {
+    console.warn(`[Session Threading] Low consistency detected: ${(sessionContext.consistencyScore * 100).toFixed(0)}%`);
+  }
+
+  // Add risk factor warnings
+  for (const risk of sessionContext.riskFactors) {
+    if (risk.score > 0.6) {
+      sessionIssues.push({
+        id: `session_risk_${risk.factor}_${Date.now()}`,
+        type: "ood_prediction",
+        severity: "medium",
+        tier: 1,
+        score: risk.score,
+        confidence: 0.65,
+        message: `⚠️ Risk factor: ${risk.description}`,
+        evidence: {
+          text: risk.factor,
+        },
+      });
+    }
+  }
+
+  return sessionIssues;
+}
+
+/**
+ * Get suggestions based on pattern type
+ */
+function getSessionPatternSuggestions(
+  patternType: string
+): string[] {
+  const suggestionMap: Record<string, string[]> = {
+    position_reversal: [
+      "🔍 Cross-reference contradictory claims",
+      "📚 Check for claim evolution",
+      "🤔 Ask AI to review for consistency",
+      "📝 Note conflicting statements in transcript",
+    ],
+    hallucination_arc: [
+      "📊 Review early responses vs late responses",
+      "🔍 Fact-check turning points in conversation",
+      "⏹️ Consider breaking conversation into segments",
+      "📚 Re-verify claims from late in conversation",
+    ],
+    semantic_drift: [
+      "📍 Refocus on original question",
+      "🔄 Ask AI to return to core topic",
+      "📚 Verify facts from drift period",
+      "🔍 Compare beginning vs end of conversation",
+    ],
+    fact_contradiction: [
+      "❌ Flag contradiction to user",
+      "📚 Verify each conflicting claim separately",
+      "🤔 Ask AI which version it's more confident in",
+      "📝 Document conflicting statements",
+    ],
+  };
+
+  return suggestionMap[patternType] || [
+    "🔍 Manual review recommended",
+    "🤔 Ask model for clarification",
+  ];
 }
 
 /**

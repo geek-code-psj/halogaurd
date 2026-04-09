@@ -128,23 +128,48 @@ export async function detectTier3(request: DetectionRequest): Promise<DetectionI
   if (pairs.length === 0) return issues;
 
   try {
+    // PHASE 1 FIX: Track if timeout occurred
+    let timedOut = false;
     const nliResults = await Promise.race([
       callNLIService(pairs),
       new Promise((resolve) =>
-        setTimeout(
-          () =>
-            resolve({
-              entailment_scores: pairs.map(() => 0.5),
-              contradiction_scores: pairs.map(() => 0.3),
-              neutral_scores: pairs.map(() => 0.2),
-            }),
-          500
-        )
+        setTimeout(() => {
+          timedOut = true;
+          resolve({
+            entailment_scores: pairs.map(() => 0.5),
+            contradiction_scores: pairs.map(() => 0.3),
+            neutral_scores: pairs.map(() => 0.2),
+            _timedOut: true,
+          });
+        }, 500)
       ),
     ]);
 
     const results = nliResults as any;
     const { entailment_scores, contradiction_scores } = results;
+
+    // PHASE 1 FIX: If NLI timed out, return uncertain flag instead of using defaults
+    if (timedOut || results._timedOut) {
+      console.warn("[Tier3 Timeout] NLI service unavailable - returning partial recovery");
+      issues.push({
+        id: `tier3_nli_timeout_${Date.now()}`,
+        type: "ood_prediction",
+        severity: "low",
+        tier: 3,
+        score: 0.3,
+        confidence: 0.4, // Lower confidence for timeout recovery
+        message: `⏱️ TIMEOUT - NLI verification inconclusive for logical consistency check`,
+        evidence: {
+          nliScore: 0.5,
+          text: "NLI service did not respond in time. Treat as uncertain.",
+        },
+        suggestions: [
+          "🤔 Manual review of logical consistency",
+          "📚 Cross-reference with external sources",
+        ],
+      });
+      return issues;
+    }
 
     // Check each pair
     for (let i = 0; i < pairs.length; i++) {
@@ -190,7 +215,27 @@ export async function detectTier3(request: DetectionRequest): Promise<DetectionI
       }
     }
   } catch (error) {
+    // PHASE 1 FIX: Timeout data recovery on exception
     console.error("Tier 3 NLI detection error:", error);
+    
+    // Return uncertain flag instead of empty array
+    if (pairs.length > 0) {
+      issues.push({
+        id: `tier3_error_recovery_${Date.now()}`,
+        type: "ood_prediction",
+        severity: "low",
+        tier: 3,
+        score: 0.25,
+        confidence: 0.35,
+        message: `⚠️ ERROR RECOVERY - NLI verification failed`,
+        evidence: {
+          text: `NLI analysis encountered an error. Claim marked as uncertain for manual review.`,
+        },
+        suggestions: [
+          "🔍 Manual verification of logical consistency",
+        ],
+      });
+    }
   }
 
   return issues;
