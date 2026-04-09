@@ -6,6 +6,14 @@
 
 import axios, { AxiosError } from 'axios';
 import Redis from 'ioredis';
+import { spawn } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const WIKIPEDIA_API_BASE = 'https://en.wikipedia.org/w/api.php';
 const WIKIDATA_API_BASE = 'https://www.wikidata.org/w/api.php';
@@ -491,9 +499,6 @@ export async function verifyClaimsWithPythonWikipedia(
   const results = new Map<string, FactCheckResult>();
 
   try {
-    const { spawn } = require('child_process');
-    const path = require('path');
-
     return new Promise((resolve, reject) => {
       const pythonScript = path.join(__dirname, 'wikipedia-checker.py');
       const python = spawn('python3', [pythonScript, ...claims.slice(0, 5)]);
