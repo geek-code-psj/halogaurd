@@ -362,11 +362,17 @@ app.post('/api/v1/analyze', async (req: Request, res: Response) => {
 
     // Queue async tier (4) if needed
     if (response.asyncRemaining && response.asyncRemaining.length > 0 && semanticIndexQueue) {
-      await semanticIndexQueue.add(
-        'semantic-analysis',
-        request,
-        { attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
-      );
+      try {
+        await semanticIndexQueue.add(
+          'semantic-analysis',
+          request,
+          { attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
+        );
+      } catch (queueError: any) {
+        // Log queue error but don't fail the response - analysis is already complete
+        console.warn('[/api/v1/analyze] Queue error (non-fatal):', queueError?.message);
+        logger.warn('Failed to queue async analysis task', { error: queueError?.message });
+      }
     }
 
     res.json({
@@ -723,15 +729,21 @@ io.on('connection', (socket) => {
 
       // Queue async tier (4) if needed
       if (response.asyncRemaining.length > 0 && semanticIndexQueue) {
-        await semanticIndexQueue.add(
-          'semantic-analysis',
-          detectionRequest,
-          { 
-            attempts: 2,
-            backoff: { type: 'exponential', delay: 1000 },
-            removeOnComplete: true,
-          }
-        );
+        try {
+          await semanticIndexQueue.add(
+            'semantic-analysis',
+            detectionRequest,
+            { 
+              attempts: 2,
+              backoff: { type: 'exponential', delay: 1000 },
+              removeOnComplete: true,
+            }
+          );
+        } catch (queueError: any) {
+          // Log queue error but don't fail - analysis is already complete and sent to client
+          console.warn('[WebSocket analyze] Queue error (non-fatal):', queueError?.message);
+          logger.warn('Failed to queue async analysis task via WebSocket', { error: queueError?.message });
+        }
         
         logger.debug(`Async analysis queued for request ${requestId}`);
       }
