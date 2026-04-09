@@ -1,12 +1,12 @@
 /**
  * HaloGuard Content Script
  * Injected into every page to analyze content and highlight issues
+ * 
+ * NOTE: Content scripts cannot use imports. This file is self-contained.
  */
 
-import { PageContent, ExtensionMessage } from '../types';
-
 // Listen for messages from background script
-chrome.runtime.onMessage.addListener((request: ExtensionMessage, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request: any, sender: any, sendResponse: any) => {
   if (request.type === 'GET_PAGE_CONTENT') {
     const content = getPageContent();
     sendResponse(content);
@@ -20,7 +20,7 @@ chrome.runtime.onMessage.addListener((request: ExtensionMessage, sender, sendRes
 /**
  * Extract page content for analysis
  */
-function getPageContent(): PageContent {
+function getPageContent(): any {
   return {
     url: window.location.href,
     title: document.title,

@@ -3,12 +3,22 @@
  * Main UI for the extension
  */
 
-import { HaloGuardAPI } from '../shared/api';
-import { AnalysisResult, DashboardMetrics } from '../types';
+// Helper to send messages to the service worker
+async function sendToBackground(type: string, payload?: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type, payload }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
 
 class PopupDashboard {
-  private analyses: AnalysisResult[] = [];
-  private metrics: DashboardMetrics | null = null;
+  private analyses: any = {};
+  private metrics: any = null;
   private currentTab: string = 'dashboard';
 
   constructor() {
@@ -34,8 +44,8 @@ class PopupDashboard {
 
   private async loadData() {
     try {
-      this.analyses = await HaloGuardAPI.getAnalysisHistory();
-      this.metrics = (await HaloGuardAPI.getDashboardMetrics()) as any;
+      this.analyses = await sendToBackground('GET_ANALYSIS_HISTORY');
+      this.metrics = await sendToBackground('GET_METRICS');
       this.render();
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -104,7 +114,9 @@ class PopupDashboard {
   }
 
   private renderDashboard(): string {
-    const latest = this.analyses[0];
+    // Get the most recent analysis from the analyses object
+    const analysesList: any[] = Object.values(this.analyses || {});
+    const latest = analysesList.length > 0 ? analysesList[0] : null;
 
     return `
       <div class="dashboard-content">
@@ -125,14 +137,14 @@ class PopupDashboard {
                   ? `
                 <div class="findings">
                   <strong>Findings:</strong>
-                  <ul>${latest.findings.map((f) => `<li>${f}</li>`).join('')}</ul>
+                  <ul>${latest.findings.map((f: any) => `<li>${f}</li>`).join('')}</ul>
                 </div>
               `
                   : ''
               }
               <div class="tiers">
                 <strong>Tier Breakdown:</strong>
-                ${latest.tiers.map((t) => `
+                ${latest.tiers.map((t: any) => `
                   <div class="tier tier-${t.status}">
                     <span class="tier-icon">${this.getTierIcon(t.status)}</span>
                     <span class="tier-name">Tier ${t.tier}: ${t.name}</span>
@@ -149,13 +161,13 @@ class PopupDashboard {
         <div class="recent-activity">
           <h3>📋 RECENT ACTIVITY</h3>
           ${
-            this.analyses.length > 0
+            Object.keys(this.analyses || {}).length > 0
               ? `
             <div class="activity-list">
-              ${this.analyses
+              ${Object.values(this.analyses || {})
                 .slice(0, 5)
                 .map(
-                  (a) => `
+                  (a: any) => `
                 <div class="activity-item ${a.riskLevel}">
                   <div class="time">${new Date(a.timestamp).toLocaleTimeString()}</div>
                   <div class="title">${a.riskLevel.toUpperCase()}: ${a.url.split('/').pop() || 'Page'}</div>
@@ -184,7 +196,7 @@ class PopupDashboard {
       <div class="reports-content">
         <h3>📈 Analysis Reports</h3>
         ${
-          this.analyses.length > 0
+          Object.keys(this.analyses || {}).length > 0
             ? `
           <table class="reports-table">
             <thead>
@@ -196,9 +208,9 @@ class PopupDashboard {
               </tr>
             </thead>
             <tbody>
-              ${this.analyses
+              ${Object.values(this.analyses || {})
                 .map(
-                  (a) => `
+                  (a: any) => `
                 <tr>
                   <td>${new Date(a.timestamp).toLocaleString()}</td>
                   <td><small>${a.url}</small></td>
@@ -241,11 +253,12 @@ class PopupDashboard {
   private async scanCurrentPage() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CONTENT' }, async (response) => {
-        if (response) {
-          const result = await HaloGuardAPI.analyzePage(response);
-          await HaloGuardAPI.saveAnalysis(result);
-          this.loadData();
+      chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CONTENT' }, async (pageContent) => {
+        if (pageContent) {
+          // Send to background service worker to analyze
+          await sendToBackground('SCAN_PAGE', { url: tab.url, id: tab.id });
+          // Reload data after a short delay
+          setTimeout(() => this.loadData(), 500);
         }
       });
     }
@@ -253,7 +266,7 @@ class PopupDashboard {
 
   private async clearHistory() {
     if (confirm('Clear all analysis history?')) {
-      await HaloGuardAPI.clearHistory();
+      await sendToBackground('CLEAR_HISTORY');
       this.loadData();
     }
   }
