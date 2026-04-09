@@ -2,16 +2,16 @@
  * Redis connection management
  */
 
-import { createClient } from "redis";
+import Redis from "ioredis";
 
 export async function createRedisClient(redisUrl: string) {
-  const client = createClient({
-    url: redisUrl,
+  const client = new Redis(redisUrl, {
+    retryStrategy: (times) => Math.min(times * 50, 500),
+    maxRetriesPerRequest: null,
   });
 
-  client.on("error", (err) => console.log("Redis Client Error", err));
+  client.on("error", (err: any) => console.log("Redis Client Error", err));
 
-  await client.connect();
   console.log("Redis connected");
 
   return client;

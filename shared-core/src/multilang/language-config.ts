@@ -302,5 +302,6 @@ export function getPlatformSelectors(
   platform: string
 ): string[] {
   const selectors = PLATFORM_SELECTORS[language];
-  return selectors && selectors[platform] ? selectors[language][platform] : PLATFORM_SELECTORS.en[platform] || [];
+  const platformSelectors = selectors && (selectors as any)[platform] ? (selectors as any)[platform] : (PLATFORM_SELECTORS.en as any)[platform] || [];
+  return Array.isArray(platformSelectors) ? platformSelectors : [];
 }

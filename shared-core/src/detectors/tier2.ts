@@ -37,36 +37,75 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
   }
 
   try {
-    // Primary verification: JavaScript Wikipedia API (faster, ~100-200ms, works in production)
-    const verificationPromise = batchVerifyClaims(claims);
+    // Dual verification strategy: Wikipedia API + Wikidata
+    // Both run in parallel with timeout protection
+    const jsVerificationPromise = batchVerifyClaims(claims);
+    
+    const wikidataPromise = Promise.all(
+      claims.map(async (claim) => {
+        try {
+          const result = await checkWikidataFact(claim);
+          return { claim, result };
+        } catch (e) {
+          return { claim, result: null };
+        }
+      })
+    );
 
-    const timeoutPromise = new Promise<Map<string, any>>((resolve) => {
+    const timeoutPromise = new Promise<any>((resolve) => {
       setTimeout(() => {
-        resolve(new Map());
+        resolve(null);
       }, 300);
     });
 
-    const verifications = (await Promise.race([verificationPromise, timeoutPromise])) as Map<string, any>;
+    // Get both verifications in parallel with timeout
+    const jsVerifications = (await Promise.race([
+      jsVerificationPromise,
+      timeoutPromise,
+    ])) as Map<string, any> | null;
+
+    const wikidataResults = await Promise.race([
+      wikidataPromise,
+      timeoutPromise,
+    ]);
+
+    // Build Wikidata lookup map
+    const wikidataMap = new Map<string, any>();
+    if (wikidataResults && Array.isArray(wikidataResults)) {
+      for (const { claim, result } of wikidataResults) {
+        if (result) wikidataMap.set(claim, result);
+      }
+    }
 
     // Check each claim and create issues for unverified ones
     for (const claim of claims) {
-      const jsVerification = verifications?.get(claim) || null;
-      const pythonVerification = pythonVerifications?.get(claim) || null;
+      const jsVerification = jsVerifications?.get(claim) || null;
+      const wikidataVerification = wikidataMap?.get(claim) || null;
 
       // If both verification sources timeout, skip
-      if (!jsVerification && !pythonVerification) {
+      if (!jsVerification && !wikidataVerification) {
         console.debug(`Tier 2 fact-check timeout for claim: ${claim}`);
         continue;
       }
 
-      // Merge verification results: use Python as tie-breaker
-      const finalVerification = pythonVerification || jsVerification;
-      const hasDualVerification = jsVerification && pythonVerification;
+      // Use most confident verification (prefer high confidence from either source)
+      let finalVerification = null;
+      let hasDualVerification = false;
+
+      if (jsVerification && wikidataVerification) {
+        hasDualVerification = true;
+        // Use the one with higher confidence
+        finalVerification = (jsVerification.confidence >= wikidataVerification.confidence)
+          ? { ...jsVerification, multiSource: true, sources: ['wikipedia', 'wikidata'] }
+          : { ...wikidataVerification, multiSource: true, sources: ['wikidata', 'wikipedia'] };
+      } else {
+        finalVerification = jsVerification || wikidataVerification;
+      }
 
       // If claim is not verified or has low confidence
       if (finalVerification?.verified === false) {
         // High confidence error if both sources disagree
-        const confidenceBoost = hasDualVerification && jsVerification?.verified === false ? 0.15 : 0;
+        const confidenceBoost = hasDualVerification ? 0.1 : 0;
         issues.push({
           id: `tier2_factual_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
           type: "factual_error",
@@ -74,42 +113,44 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
           tier: 2,
           score: 1 - finalVerification.confidence,
           confidence: Math.min(1, finalVerification.confidence + confidenceBoost),
-          message: `Factual claim not verified: "${claim.substring(0, 80)}"${finalVerification.evidence ? ` (${finalVerification.evidence})` : ""}${hasDualVerification ? " [dual-verified]" : ""}`,
+          message: `❌ Factual claim NOT verified: "${claim.substring(0, 80)}"${hasDualVerification ? " [dual-source verified]" : ""}`,
           evidence: {
-            claim,
-            source: finalVerification.source,
-            url: finalVerification.url,
-            reason: finalVerification.evidence,
-            jsSource: jsVerification?.source,
-            pythonSource: pythonVerification?.source,
+            fact: claim,
+            source: hasDualVerification ? 'Wikipedia + Wikidata' : finalVerification.source,
+            text: finalVerification.evidence || 'Claim not found in knowledge bases',
+            nliScore: finalVerification.confidence,
           },
           suggestions: [
-            "Verify with primary sources",
-            "Check Wikipedia for accurate information",
-            "Ask the AI to cite its sources",
-            "Check the publication date of the AI model's training data",
+            "🔍 Verify with primary sources",
+            "📚 Check Wikipedia for accurate information",
+            "🤔 Ask the AI model to cite its sources",
+            "📅 Check if claim involves recent events (training data cutoff)",
           ],
         });
       } else if (finalVerification?.verified === null) {
         // Unknown verification (couldn't find data)
         issues.push({
           id: `tier2_unverified_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-          type: "unsupported_claim",
+          type: "ood_prediction",
           severity: "low",
           tier: 2,
           score: 0.3,
           confidence: 0.4,
-          message: `Claim could not be verified in knowledge base: "${claim.substring(0, 80)}"${hasDualVerification ? " [dual-checked]" : ""}`,
+          message: `⚠️ Claim could not be verified in knowledge bases: "${claim.substring(0, 80)}"`,
           evidence: {
-            claim,
-            source: finalVerification.source,
-            reason: "Entity or claim not found in corpus",
+            fact: claim,
+            source: hasDualVerification ? 'Wikipedia + Wikidata' : finalVerification?.source,
+            text: "Entity or claim not found in Wikipedia/Wikidata corpus",
           },
           suggestions: [
-            "Consider asking the AI for sources",
-            "Check if claim involves recent events (outside training data)",
+            "🤔 Ask the AI model for sources",
+            "📅 Check if claim involves recent events (outside training data)",
+            "🔍 Search for the entity directly on Wikipedia",
           ],
         });
+      } else if (finalVerification?.verified === true) {
+        // Log verified facts for confidence tracking
+        console.debug(`[Tier2] ✅ VERIFIED claim: "${claim.substring(0, 60)}..." | Confidence: ${(finalVerification.confidence * 100).toFixed(0)}% | Sources: ${hasDualVerification ? 'Wikipedia + Wikidata' : finalVerification.source}`);
       }
     }
   } catch (error: any) {

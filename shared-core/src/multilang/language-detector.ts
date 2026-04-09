@@ -140,9 +140,10 @@ export function detectLanguageByRegex(content: string): SupportedLanguageCode | 
 export function getBrowserLanguage(): SupportedLanguageCode | null {
   let browserLang: string | undefined;
 
-  // Browser environment
-  if (typeof window !== 'undefined' && window.navigator) {
-    browserLang = window.navigator.language || (window.navigator as any).userLanguage;
+  // Browser environment (with proper type narrowing)
+  if (typeof (globalThis as any).window !== 'undefined' && 'navigator' in (globalThis as any).window) {
+    const nav = ((globalThis as any).window as any).navigator;
+    browserLang = nav.language || nav.userLanguage;
   }
   // Node.js / Runtime environment
   else if (typeof process !== 'undefined' && process.env) {

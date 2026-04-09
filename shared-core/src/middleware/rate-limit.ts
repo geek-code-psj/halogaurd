@@ -39,7 +39,7 @@ function getRateLimitKey(req: Request): string {
  * Middleware to enforce rate limiting
  * Returns 429 Too Many Requests if limit exceeded
  */
-export function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
+export function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): Response | void {
   try {
     const key = getRateLimitKey(req);
     const now = Date.now();
@@ -88,7 +88,7 @@ export function rateLimitMiddleware(req: Request, res: Response, next: NextFunct
       });
     }
 
-    next();
+    return next();
   } catch (error) {
     logger.error({ error }, 'Rate limiting middleware error');
     // Continue on error instead of blocking (fail open)

@@ -13,8 +13,7 @@ import {
   trackApiUsage,
   tierBasedRateLimit,
 } from './quota-middleware';
-import { createLicensingTables, seedFreeSubscriptions } from '../databases/licensing-migrations';
-import { db } from '../databases/db-manager';
+import { initializeLicensingTables, seedFreeSubscriptions } from '../databases/licensing-migrations';
 
 /**
  * Initialize licensing system
@@ -26,11 +25,11 @@ export async function initializeLicensing(app: Express): Promise<void> {
   try {
     // 1. Create database tables
     logger.info('[Init] Creating licensing tables...');
-    createLicensingTables(db);
+    await initializeLicensingTables();
 
     // 2. Seed free subscriptions for existing users
     logger.info('[Init] Seeding free subscriptions...');
-    seedFreeSubscriptions(db);
+    await seedFreeSubscriptions();
 
     // 3. Register webhook handler BEFORE other middleware
     // Must use raw body parser for signature verification
@@ -210,13 +209,13 @@ export async function setupApp(): Promise<Express> {
 export function setupScheduledTasks(): void {
   const cron = require('node-cron');
   const { getLicenseManager } = require('./license-manager');
+  const { resetMonthlyQuotas, cleanupOldUsageRecords, archiveOldBillingRecords } = require('../databases/licensing-migrations');
 
   // Monthly quota reset: 1st day of month at 00:00 UTC
   cron.schedule('0 0 1 * *', async () => {
     logger.info('[Cron] Running monthly quota reset...');
     try {
-      const { resetMonthlyQuotas } = require('../databases/licensing-migrations');
-      resetMonthlyQuotas(db);
+      await resetMonthlyQuotas();
       logger.info('[Cron] Monthly quota reset completed');
     } catch (error) {
       logger.error('[Cron] Monthly quota reset failed:', error);
@@ -227,8 +226,7 @@ export function setupScheduledTasks(): void {
   cron.schedule('0 2 * * *', async () => {
     logger.info('[Cron] Cleaning up old quota records...');
     try {
-      const { cleanupOldQuotaRecords } = require('../databases/licensing-migrations');
-      cleanupOldQuotaRecords(db);
+      await cleanupOldUsageRecords();
       logger.info('[Cron] Quota cleanup completed');
     } catch (error) {
       logger.error('[Cron] Quota cleanup failed:', error);
@@ -239,8 +237,7 @@ export function setupScheduledTasks(): void {
   cron.schedule('0 3 * * 1', async () => {
     logger.info('[Cron] Archiving old billing records...');
     try {
-      const { archiveOldBillingRecords } = require('../databases/licensing-migrations');
-      archiveOldBillingRecords(db);
+      await archiveOldBillingRecords();
       logger.info('[Cron] Billing archive completed');
     } catch (error) {
       logger.error('[Cron] Billing archive failed:', error);

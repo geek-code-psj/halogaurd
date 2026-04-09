@@ -158,17 +158,17 @@ export class BrowserInferenceEngine {
         console.info('[Browser] Using CPU/WASM (WebGPU unavailable)');
       }
 
-      // Initialize transformers.js pipeline
-      // NOTE: Installation required: npm install @xenova/transformers
+      // Initialize transformers.js pipeline (optional)
+      // NOTE: @xenova/transformers is optional - gracefully skip if not installed
       try {
-      try {
-        const { pipeline: tfPipeline } = await import('@xenova/transformers');
-        // Use tfPipeline for inference
-      } catch (error) {
-        // @xenova/transformers not available - use fallback
-        logger.warn('[BrowserInference] @xenova/transformers not available');
-      }
+        const transformersModule = await import('@xenova/transformers');
+        if (!transformersModule) {
+          console.warn('[BrowserInference] @xenova/transformers not available, using degraded mode');
+          this.initialized = false;
+          return;
+        }
 
+        const tfPipeline = transformersModule.pipeline;
         // Load DeBERTa-v3-small for NLI
         this.pipeline = await tfPipeline(
           'zero-shot-classification',
@@ -179,12 +179,13 @@ export class BrowserInferenceEngine {
         this.initialized = true;
         console.info('[Browser] Model loaded successfully');
       } catch (error) {
-        console.warn('[Browser] Failed to load transformers.js:', error);
-        console.info('[Browser] Falling back to degraded mode (Tiers 0-2 only)');
+        console.warn('[Browser] @xenova/transformers not available - Tier 3 inference disabled');
+        this.initialized = false;
+        // This is acceptable - Tier 1 and 2 detection still work
       }
     } catch (error) {
-      console.error('[Browser] Initialization failed:', error);
-      throw error;
+      console.error('[Browser] Initialization error:', error);
+      this.initialized = false;
     }
   }
 
@@ -245,20 +246,13 @@ export class BrowserInferenceEngine {
   async getEmbeddings(texts: string[]): Promise<{ embeddings: number[][]; latencyMs: number }> {
     const startTime = performance.now();
 
+    if (!this.initialized || !this.pipeline) {
+      // Fallback: Return empty embeddings if not initialized
+      return { embeddings: texts.map(() => []), latencyMs: 0 };
+    }
+
     try {
-      // Dynamic import to avoid bundling if not available
-      try {
-        const { pipeline: tfPipeline } = await import('@xenova/transformers');
-        // Use tfPipeline for inference
-      } catch (error) {
-        // @xenova/transformers not available - use fallback
-        logger.warn('[BrowserInference] @xenova/transformers not available');
-      }
-
-      const pipeline = await tfPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
-        device: this.device,
-      });
-
+      const pipeline = this.pipeline;
       const result = await Promise.race([
         pipeline(texts),
         new Promise((_, reject) =>

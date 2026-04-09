@@ -3,7 +3,7 @@
  * Implements token entropy analysis and cosine similarity checks
  */
 
-import { DetectionIssue, DetectionRequest } from "../types/detector.ts";
+import { DetectionIssue, DetectionRequest } from "../types/detector";
 
 /**
  * Calculate Shannon entropy of token distribution

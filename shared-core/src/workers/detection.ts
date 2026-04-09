@@ -41,7 +41,7 @@ export function createDetectionWorker(redisUrl: string) {
     {
       connection: {
         url: redisUrl,
-      },
+      } as any,
       concurrency: 5,
     }
   );
