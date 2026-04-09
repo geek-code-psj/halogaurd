@@ -9,7 +9,6 @@ import {
   verifyClaimAgainstWikipedia,
   checkWikidataFact,
   batchVerifyClaims,
-  verifyClaimsWithPythonWikipedia,
 } from "../utils/fact-checker";
 
 /**
@@ -38,21 +37,13 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
   }
 
   try {
-    // Primary verification: JavaScript Wikipedia API (faster, ~100-200ms)
+    // Primary verification: JavaScript Wikipedia API (faster, ~100-200ms, works in production)
     const verificationPromise = batchVerifyClaims(claims);
-    
-    // Secondary verification: Python Wikipedia-API (more thorough, runs in parallel)
-    let pythonVerifications = new Map<string, any>();
-    try {
-      pythonVerifications = await verifyClaimsWithPythonWikipedia(claims.slice(0, 3));
-    } catch (error) {
-      console.debug('Python Wikipedia verification failed, continuing with JavaScript API only');
-    }
 
     const timeoutPromise = new Promise<Map<string, any>>((resolve) => {
       setTimeout(() => {
         resolve(new Map());
-      }, 350);
+      }, 300);
     });
 
     const verifications = (await Promise.race([verificationPromise, timeoutPromise])) as Map<string, any>;

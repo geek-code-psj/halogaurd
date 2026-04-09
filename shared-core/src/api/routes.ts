@@ -113,26 +113,9 @@ router.post("/api/v1/analyze/batch", requireAuth, async (req: Request, res: Resp
         .json({ error: "Maximum 100 items per batch request" });
     }
 
-    // Check for specific error conditions
-    if (error.message && error.message.includes("rate limit")) {
-      return res.status(429).json({ 
-        error: "Rate limit exceeded", 
-        message: "Too many requests. Please retry after some time.",
-        retryAfter: 60
-      });
-    }
-    
-    if (error.message && error.message.includes("unavailable")) {
-      return res.status(503).json({ 
-        error: "Service unavailable", 
-        message: "Detection service is temporarily unavailable. Please try again later."
-      });
-    }
-    
-    res.status(500).json({ 
-      error: "Batch detection failed", 
-      message: error.message || "Unknown error occurred" 
-   
+    // Validate and prepare requests
+    const requests = items.map((item: any) => ({
+      id: `batch_${Date.now()}_${Math.random()}`,
       content: item.content,
       model: item.model || "unknown",
       timestamp: Date.now(),
@@ -152,9 +135,27 @@ router.post("/api/v1/analyze/batch", requireAuth, async (req: Request, res: Resp
     });
   } catch (error: any) {
     console.error("Batch detection error:", error);
-    res
-      .status(500)
-      .json({ error: "Batch detection failed", message: error.message });
+    
+    // Check for specific error conditions
+    if (error.message && error.message.includes("rate limit")) {
+      return res.status(429).json({ 
+        error: "Rate limit exceeded", 
+        message: "Too many requests. Please retry after some time.",
+        retryAfter: 60
+      });
+    }
+    
+    if (error.message && error.message.includes("unavailable")) {
+      return res.status(503).json({ 
+        error: "Service unavailable", 
+        message: "Detection service is temporarily unavailable. Please try again later."
+      });
+    }
+    
+    res.status(500).json({ 
+      error: "Batch detection failed", 
+      message: error.message || "Unknown error occurred" 
+    });
   }
 });
 

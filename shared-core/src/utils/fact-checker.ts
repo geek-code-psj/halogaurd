@@ -6,14 +6,6 @@
 
 import axios, { AxiosError } from 'axios';
 import Redis from 'ioredis';
-import { spawn } from 'child_process';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-// Get __dirname equivalent in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const WIKIPEDIA_API_BASE = 'https://en.wikipedia.org/w/api.php';
 const WIKIDATA_API_BASE = 'https://www.wikidata.org/w/api.php';
@@ -493,58 +485,14 @@ export async function closeCache() {
  * Call Python Wikipedia checker for enhanced fact-checking
  * Uses the Wikipedia-API Python package
  */
+/**
+ * DEPRECATED: Python Wikipedia verification
+ * Disabled for production - relies on file system access that may not be available in containerized environments
+ * Using JavaScript Wikipedia API instead (tier2.ts)
+ */
 export async function verifyClaimsWithPythonWikipedia(
   claims: string[]
 ): Promise<Map<string, FactCheckResult>> {
-  const results = new Map<string, FactCheckResult>();
-
-  try {
-    return new Promise((resolve, reject) => {
-      const pythonScript = path.join(__dirname, 'wikipedia-checker.py');
-      const python = spawn('python3', [pythonScript, ...claims.slice(0, 5)]);
-
-      let stdout = '';
-      let stderr = '';
-
-      python.stdout.on('data', (data: Buffer) => {
-        stdout += data.toString();
-      });
-
-      python.stderr.on('data', (data: Buffer) => {
-        stderr += data.toString();
-      });
-
-      python.on('close', (code: number) => {
-        try {
-          if (code !== 0) {
-            console.warn(`[Python Wikipedia] Process exited with code ${code}`);
-            if (stderr) console.warn(`[Python Wikipedia] stderr:`, stderr);
-            return resolve(results); // Return empty on error
-          }
-
-          const pythonResults = JSON.parse(stdout);
-
-          // Convert Python results to our FactCheckResult format
-          for (const [claim, data] of Object.entries(pythonResults)) {
-            const pyResult = data as any;
-            results.set(claim, {
-              verified: pyResult.verified || false,
-              confidence: pyResult.confidence || 0,
-              source: 'wikipedia-python',
-              evidence: pyResult.summary,
-              url: pyResult.url,
-            });
-          }
-
-          resolve(results);
-        } catch (error) {
-          console.error('[Python Wikipedia] Failed to parse results:', error);
-          resolve(results);
-        }
-      });
-    });
-  } catch (error) {
-    console.warn('[Python Wikipedia] Error spawning checker:', error);
-    return results;
-  }
+  // Return empty results - Python spawning disabled in production
+  return new Map<string, FactCheckResult>();
 }
