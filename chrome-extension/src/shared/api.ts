@@ -89,12 +89,12 @@ export class HaloGuardAPI {
         analyses[analysis.id] = analysis;
 
         // Keep only last 50 analyses
-        const sorted = Object.values(analyses)
+        const sorted = (Object.values(analyses) as AnalysisResult[])
           .sort((a, b) => b.timestamp - a.timestamp)
           .slice(0, 50);
 
         const updated: { [key: string]: AnalysisResult } = {};
-        sorted.forEach((a) => {
+        sorted.forEach((a: AnalysisResult) => {
           updated[a.id] = a;
         });
 

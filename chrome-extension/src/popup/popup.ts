@@ -35,7 +35,7 @@ class PopupDashboard {
   private async loadData() {
     try {
       this.analyses = await HaloGuardAPI.getAnalysisHistory();
-      this.metrics = await HaloGuardAPI.getDashboardMetrics();
+      this.metrics = (await HaloGuardAPI.getDashboardMetrics()) as any;
       this.render();
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -240,7 +240,7 @@ class PopupDashboard {
 
   private async scanCurrentPage() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab.id) {
+    if (tab && tab.id) {
       chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CONTENT' }, async (response) => {
         if (response) {
           const result = await HaloGuardAPI.analyzePage(response);

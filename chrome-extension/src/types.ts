@@ -89,7 +89,7 @@ export interface PageContent {
 }
 
 export interface ExtensionMessage {
-  type: string;
+  type: 'SCAN_PAGE' | 'GET_ANALYSIS_HISTORY' | 'GET_METRICS' | 'CLEAR_HISTORY' | 'GET_PAGE_CONTENT' | 'HIGHLIGHT_ISSUES' | 'ANALYSIS_COMPLETE' | 'TRIGGER_AUTO_SCAN' | string;
   payload?: any;
 }
 
@@ -107,11 +107,7 @@ export interface CachedResult {
   ttl: number;
 }
 
-export interface ExtensionMessage {
-  type: 'ANALYZE_CONTENT' | 'GET_SESSION' | 'HEALTH_CHECK' | 'SHOW_RESULTS' | 'HIDE_RESULTS' | 'SHOW_ERROR' | 'PING' | 'analyze' | 'get_session' | 'save_setting' | 'get_setting' | 'analysis_result' | 'error';
-  payload?: any;
-  requestId?: string;
-}
+
 
 export interface AnalysisOverlay {
   issueCount: number;

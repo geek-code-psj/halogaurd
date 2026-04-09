@@ -34,7 +34,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === 'haloguard-scan-text') {
+  if (info.menuItemId === 'haloguard-scan-text' && info.selectionText) {
     await handleScanText(info.selectionText, tab);
   } else if (info.menuItemId === 'haloguard-scan-page') {
     await handleScanPage(tab);
@@ -139,7 +139,7 @@ async function handleScanText(selectedText: string, tab: any) {
 }
 
 async function updateMetrics(result: any) {
-  const metrics = await HaloGuardAPI.getDashboardMetrics();
+  const metrics: any = await HaloGuardAPI.getDashboardMetrics();
 
   let threats = metrics.threatsBlocked;
   let exposure = metrics.dataExposure;
