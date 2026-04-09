@@ -280,16 +280,16 @@ class PopupDashboard {
     console.log('[HaloGuard Popup] Scan button clicked');
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tabs.length) {
+      if (!tabs.length || !tabs[0]) {
         console.error('[HaloGuard Popup] No active tab found');
         alert('Please make sure you have an active tab open');
         return;
       }
 
       const tab = tabs[0];
-      console.log('[HaloGuard Popup] Active tab:', { id: tab.id, url: tab.url });
+      console.log('[HaloGuard Popup] Active tab:', { id: tab?.id, url: tab?.url });
 
-      if (!tab.id) {
+      if (!tab?.id) {
         console.error('[HaloGuard Popup] Tab ID is invalid');
         alert('Could not get current tab information');
         return;
@@ -297,7 +297,7 @@ class PopupDashboard {
 
       // Send scan request to background
       console.log('[HaloGuard Popup] Sending SCAN_PAGE to background...');
-      await sendToBackground('SCAN_PAGE', { url: tab.url, id: tab.id });
+      await sendToBackground('SCAN_PAGE', { url: tab?.url, id: tab?.id });
       console.log('[HaloGuard Popup] Scan request sent, waiting for response...');
 
       // Reload data after a delay to see results

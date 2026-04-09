@@ -51,7 +51,41 @@ class HaloGuardAPI {
             summary: 'Analysis partially completed. ML/LLM tiers unavailable.',
           };
         }
-        const errorText = await response.text().catch(() => 'Unknown error');\n        console.error('[HaloGuard] API error response:', errorText);\n        throw new Error(`API error: ${response.status} - ${errorText?.substring(0, 100)}`);\n      }\n\n      const data = await response.json();\n      console.log('[HaloGuard] API response data:', { flagged: data.flagged, issuesCount: data.issues?.length });\n      \n      return {\n        id: `analysis-${Date.now()}`,\n        url: request.url,\n        timestamp: Date.now(),\n        riskLevel: data.flagged ? 'high' : 'low',\n        confidence: data.overallScore || 0.7,\n        findings: data.issues?.map((i: any) => i.description) || [],\n        tiers: data.issues?.map((i: any) => ({\n          tier: i.tier,\n          name: ['Hedging', 'Entropy', 'Context', 'ML Model', 'LLM'][i.tier],\n          status: i.severity === 'critical' ? 'failed' : 'passed',\n          confidence: i.confidence,\n        })) || [],\n        summary: data.flagged ? 'Potential hallucinations detected' : 'Content appears authentic',\n      };\n    } catch (error) {\n      const errorMsg = error instanceof Error ? error.message : String(error);\n      console.error('[HaloGuard] API call failed:', errorMsg);\n      \n      // Check for network-level errors\n      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {\n        console.error('[HaloGuard] Network error - check your internet connection');\n        console.error('[HaloGuard] Backend URL:', API_ENDPOINT);\n      }\n      throw error;\n    }\n  }
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('[HaloGuard] API error response:', errorText);
+        throw new Error(`API error: ${response.status} - ${errorText?.substring(0, 100)}`);
+      }
+
+      const data = await response.json();
+      console.log('[HaloGuard] API response data:', { flagged: data.flagged, issuesCount: data.issues?.length });
+      
+      return {
+        id: `analysis-${Date.now()}`,
+        url: request.url,
+        timestamp: Date.now(),
+        riskLevel: data.flagged ? 'high' : 'low',
+        confidence: data.overallScore || 0.7,
+        findings: data.issues?.map((i: any) => i.description) || [],
+        tiers: data.issues?.map((i: any) => ({
+          tier: i.tier,
+          name: ['Hedging', 'Entropy', 'Context', 'ML Model', 'LLM'][i.tier],
+          status: i.severity === 'critical' ? 'failed' : 'passed',
+          confidence: i.confidence,
+        })) || [],
+        summary: data.flagged ? 'Potential hallucinations detected' : 'Content appears authentic',
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[HaloGuard] API call failed:', errorMsg);
+      
+      // Check for network-level errors
+      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+        console.error('[HaloGuard] Network error - check your internet connection');
+        console.error('[HaloGuard] Backend URL:', API_ENDPOINT);
+      }
+      throw error;
+    }
+  }
 
   static async getAnalysisHistory() {
     return new Promise((resolve: any) => {
@@ -182,7 +216,7 @@ async function handleScanPage(tab: any) {
     console.log('[HaloGuard] Invalid tab ID from context menu, querying for active tab...');
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length === 0) {
+      if (tabs.length === 0 || !tabs[0]) {
         console.error('[HaloGuard] No active tab found');
         return;
       }
@@ -260,12 +294,12 @@ async function handleScanText(selectedText: string, tab: any) {
     console.log('[HaloGuard] Invalid tab ID from context menu, querying for active tab...');
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length === 0) {
+      if (tabs.length === 0 || !tabs[0]) {
         console.error('[HaloGuard] No active tab found');
         return;
       }
-      tabId = tabs[0].id;
-      tabUrl = tabs[0].url;
+      tabId = tabs[0]?.id;
+      tabUrl = tabs[0]?.url;
       console.log('[HaloGuard] Got active tab:', { tabId, url: tabUrl });
     } catch (error) {
       console.error('[HaloGuard] Failed to query tabs:', error);
