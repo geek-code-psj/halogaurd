@@ -6,9 +6,14 @@
  * Exits with error code 1 if migrations fail - does not allow silent failures.
  */
 
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import { PrismaClient } from '@prisma/client';
 import { spawn } from 'child_process';
 import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const TIMEOUT_MS = 60000; // 60 second timeout
 
