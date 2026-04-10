@@ -5,7 +5,7 @@
 
 import { AnalysisRequest, AnalysisResult } from '../types';
 
-const BACKEND_URL = 'https://haloguard-production.up.railway.app';
+const BACKEND_URL = 'https://halogaurd-production.up.railway.app';
 const API_ENDPOINT = `${BACKEND_URL}/api/v1/analyze`;
 
 export class HaloGuardAPI {
@@ -51,15 +51,32 @@ export class HaloGuardAPI {
       }
 
       const data = await response.json();
+      
+      // ✅ FIX: Transform backend response to extension format
+      // Backend: { requestId, processed, latency, flagged, issues: [{type, severity, tier, confidence}], tiers }
+      // Extension: { id, riskLevel, confidence, findings, tiers, summary }
+      
+      const findings = data.issues?.map((issue: any) => 
+        `${issue.type}: ${issue.severity} (tier ${issue.tier}, confidence: ${(issue.confidence * 100).toFixed(0)}%)`
+      ) || [];
+      
+      const maxConfidence = data.issues && data.issues.length > 0
+        ? Math.max(...data.issues.map((i: any) => i.confidence || 0))
+        : 0;
+      
+      const riskLevel = data.flagged ? 'high' : (findings.length > 0 ? 'medium' : 'low');
+      
       return {
-        id: data.id || `analysis-${Date.now()}`,
+        id: data.requestId || `analysis-${Date.now()}`,
         url: request.url,
         timestamp: Date.now(),
-        riskLevel: data.riskLevel || 'low',
-        confidence: data.confidence || 0.8,
-        findings: data.findings || [],
+        riskLevel,
+        confidence: Math.max(maxConfidence, data.confidence || 0),
+        findings,
         tiers: data.tiers || [],
-        summary: data.summary || 'No hallucinations detected.',
+        summary: findings.length > 0 
+          ? `Found ${findings.length} issues${data.flagged ? ' (HIGH RISK)' : ''}`
+          : 'No hallucinations detected.',
       };
     } catch (error) {
       console.error('API Analysis Error:', error);
