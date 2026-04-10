@@ -192,32 +192,46 @@ chrome.runtime.onMessage.addListener((request: any, sender: any, sendResponse: a
   }
 });
 
-// Helper function to send message to content script with retry logic
-async function sendMessageWithRetry(tabId: number, message: any, maxRetries: number = 3, delayMs: number = 100): Promise<any> {
+// First check if content script is alive
+async function pingContentScript(tabId: number): Promise<boolean> {
+  try {
+    console.log(`[HaloGuard] PING tab ${tabId}`);
+    const response = await chrome.tabs.sendMessage(tabId, { type: 'PING' }).catch(e => null);
+    return response?.type === 'PONG';
+  } catch (error) {
+    return false;
+  }
+}
+
+// Send message with PING check first
+async function sendMessageWithRetry(tabId: number, message: any, maxRetries: number = 10, baseDelay: number = 1000): Promise<any> {
+  // PING check loop
+  for (let p = 0; p < 5; p++) {
+    await new Promise(resolve => setTimeout(resolve, 1000 + (p * 500)));
+    if (await pingContentScript(tabId)) break;
+    console.log(`[HaloGuard] PING ${p + 1}/5 - waiting...`);
+  }
+
+  let lastError: any = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Wait before attempting (gives content script time to set up listener)
-      if (attempt === 1) {
-        console.log(`[HaloGuard] Waiting ${delayMs}ms for content script listener to initialize...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
+      const delay = baseDelay * attempt;
+      console.log(`[HaloGuard] Attempt ${attempt}/${maxRetries} - ${delay}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
 
-      console.log(`[HaloGuard] Sending message to content script (attempt ${attempt}/${maxRetries})...`);
+      console.log(`[HaloGuard] Send ${message.type} to tab ${tabId}`);
       const response = await chrome.tabs.sendMessage(tabId, message);
-      console.log(`[HaloGuard] ✓ Content script responded on attempt ${attempt}`);
+      console.log(`[HaloGuard] ✓ Got response`);
       return response;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      
-      if (attempt < maxRetries) {
-        console.warn(`[HaloGuard] Attempt ${attempt} failed: ${errorMsg}. Retrying in ${delayMs}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      } else {
-        console.error(`[HaloGuard] All ${maxRetries} attempts failed. Content script is not responding.`);
-        throw error;
-      }
+      lastError = error;
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`[HaloGuard] Attempt ${attempt} failed: ${msg}`);
     }
   }
+
+  console.error(`[HaloGuard] All ${maxRetries} attempts failed`);
+  throw lastError;
 }
 
 // Send message to content script to collect page content

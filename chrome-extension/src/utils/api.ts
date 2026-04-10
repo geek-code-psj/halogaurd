@@ -87,18 +87,24 @@ export class HaloGuardAPI {
   }
 
   /**
-   * Private fetch wrapper with timeout
+   * Private fetch wrapper with timeout and error handling
    */
   private async fetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
+    const url = `${this.baseUrl}${endpoint}`;
 
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      console.log(`[API] ${options.method || 'GET'} ${endpoint}`);
+      const response = await fetch(url, {
         ...options,
         signal: controller.signal,
       });
+      console.log(`[API] Response status: ${response.status}`);
       return response;
+    } catch (error) {
+      console.error(`[API] Request failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
     } finally {
       clearTimeout(timeout);
     }

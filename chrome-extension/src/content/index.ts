@@ -8,40 +8,44 @@
 console.log('[HaloGuard] Content script injected on:', window.location.href);
 console.log('[HaloGuard] Setting up message listener...');
 
-// Try to set up message listener - critical for extension to work
-try {
-  // Check if chrome.runtime is available
-  if (!chrome?.runtime?.onMessage) {
-    console.error('[HaloGuard] chrome.runtime.onMessage is not available');
-  } else {
-    chrome.runtime.onMessage.addListener((request: any, sender: any, sendResponse: any) => {
-      console.log('[HaloGuard] Content script received message:', request.type);
-      
-      if (request.type === 'GET_PAGE_CONTENT') {
-        try {
-          const content = getPageContent();
-          console.log('[HaloGuard] Extracted content:', { url: content.url, textLength: content.text?.length, selectedTextLength: content.selectedText?.length });
-          sendResponse(content);
-        } catch (error) {
-          console.error('[HaloGuard] Error extracting page content:', error);
-          sendResponse({ error: 'Failed to extract content' });
-        }
-      }
-
-      if (request.type === 'HIGHLIGHT_ISSUES') {
-        try {
-          console.log('[HaloGuard] Highlighting issues:', request.payload?.findings?.length || 0, 'findings');
-          highlightIssues(request.payload);
-        } catch (error) {
-          console.error('[HaloGuard] Error highlighting issues:', error);
-        }
-      }
-    });
-    console.log('[HaloGuard] ✓ Message listener registered successfully');
+// Set up message listener - must return true for async responses
+chrome.runtime.onMessage.addListener((request: any, sender: any, sendResponse: any) => {
+  console.log('[HaloGuard] Message:', request.type);
+  
+  if (request.type === 'PING') {
+    sendResponse({ type: 'PONG' });
+    return true;
   }
-} catch (error) {
-  console.error('[HaloGuard] Failed to register message listener:', error);
-}
+  
+  if (request.type === 'GET_PAGE_CONTENT') {
+    try {
+      const content = getPageContent();
+      console.log('[HaloGuard] Extracted:', content.text?.length, 'chars');
+      sendResponse(content);
+    } catch (error) {
+      console.error('[HaloGuard] Extract error:', error);
+      sendResponse({ error: String(error) });
+    }
+    return true; // Keep connection open for async sendResponse
+  }
+
+  if (request.type === 'HIGHLIGHT_ISSUES') {
+    try {
+      console.log('[HaloGuard] Highlighting:', request.payload?.findings?.length || 0);
+      highlightIssues(request.payload);
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[HaloGuard] Highlight error:', error);
+      sendResponse({ error: String(error) });
+    }
+    return true; // Keep connection open for async sendResponse
+  }
+
+  sendResponse({ error: 'Unknown message type' });
+  return true;
+});
+
+console.log('[HaloGuard] ✓ Listener ready');
 
 /**
  * Extract page content for analysis
