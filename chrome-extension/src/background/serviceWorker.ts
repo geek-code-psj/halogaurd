@@ -7,7 +7,7 @@
  */
 
 // ===== Inlined API Client =====
-const BACKEND_URL = 'https://haloguard-production.up.railway.app';
+const BACKEND_URL = 'https://halogaurd-production.up.railway.app';
 const API_ENDPOINT = `${BACKEND_URL}/api/v1/test-analyze`;
 
 class HaloGuardAPI {
