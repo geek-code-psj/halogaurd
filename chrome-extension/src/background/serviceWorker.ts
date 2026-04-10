@@ -7,9 +7,9 @@
  */
 
 // ===== Inlined API Client =====
-const BACKEND_URL = 'https://halogaurd-production.up.railway.app';
-const API_ENDPOINT = `${BACKEND_URL}/api/v1/analyze`;
-const TEST_ENDPOINT = `${BACKEND_URL}/api/v1/test-analyze`;
+const BACKEND_URL = 'https://haloguard-production.up.railway.app';
+const API_ENDPOINT = `${BACKEND_URL}/api/v2/analyze-turn`;
+const FALLBACK_ENDPOINT = `${BACKEND_URL}/api/v1/test-analyze`;
 
 class HaloGuardAPI {
   static async analyzePage(request: any) {
@@ -37,43 +37,10 @@ class HaloGuardAPI {
 
       console.log('[HaloGuard] API response status:', response.status);
 
-      // Fallback to test endpoint if main endpoint returns 404
-      if (response.status === 404) {
-        console.warn('[HaloGuard] Main endpoint returned 404, trying test endpoint...');
-        response = await fetch(TEST_ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'HaloGuard-Chrome-Extension/0.2',
-          },
-          body: requestBody,
-        });
-        console.log('[HaloGuard] Test endpoint response status:', response.status);
-      }
-
       if (!response.ok) {
-        if (response.status === 500) {
-          console.warn('[HaloGuard] Backend returned 500, using fallback response');
-          return {
-            id: `analysis-${Date.now()}`,
-            url: request.url,
-            timestamp: Date.now(),
-            riskLevel: 'medium',
-            confidence: 0.5,
-            findings: ['Backend service temporarily unavailable. Please try again.'],
-            tiers: [
-              { tier: 0, name: 'Hedging', status: 'passed', confidence: 0.9 },
-              { tier: 1, name: 'Entropy', status: 'passed', confidence: 0.85 },
-              { tier: 2, name: 'Context', status: 'warning', confidence: 0.7 },
-              { tier: 3, name: 'ML Model', status: 'failed', confidence: 0 },
-              { tier: 4, name: 'LLM', status: 'failed', confidence: 0 },
-            ],
-            summary: 'Analysis partially completed. ML/LLM tiers unavailable.',
-          };
-        }
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error('[HaloGuard] API error response:', errorText);
-        throw new Error(`API error: ${response.status} - ${errorText?.substring(0, 100)}`);
+        throw new Error(`API error: ${response.status} - ${errorText?.substring(0, 200)}`);
       }
 
       const data = await response.json();

@@ -172,8 +172,7 @@ export class BrowserInferenceEngine {
         // Load DeBERTa-v3-small for NLI
         this.pipeline = await tfPipeline(
           'zero-shot-classification',
-          'Xenova/deberta-v3-small',
-          { device: this.device }
+          'Xenova/deberta-v3-small'
         );
 
         this.initialized = true;

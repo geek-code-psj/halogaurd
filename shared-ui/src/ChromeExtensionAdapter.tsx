@@ -4,9 +4,9 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Dashboard } from '../Dashboard/components/Dashboard';
-import { BackendService } from '../Dashboard/services/BackendService';
-import { WikipediaService } from '../Dashboard/services/WikipediaService';
+import { Dashboard } from './Dashboard/components';
+import { BackendService } from './Dashboard/services/BackendService';
+import { WikipediaService } from './Dashboard/services/WikipediaService';
 
 interface ChromeExtensionDashboardProps {
   context?: 'popup' | 'sidebar' | 'panel';

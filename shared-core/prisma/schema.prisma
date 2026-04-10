@@ -208,6 +208,61 @@ model ModelMetrics {
   @@map("model_metrics")
 }
 
+// ============ PHASE 1 FIX #1: CONVERSATION PERSISTENCE ============
+
+// Multi-turn conversation history (persistent across sessions)
+model ConversationTurns {
+  id                Int      @id @default(autoincrement())
+  conversationId    String
+  turnNumber        Int
+  userMessage       String   @db.Text
+  aiResponse        String   @db.Text
+  entitiesMentioned String[] // Array of entity strings
+  confidenceScore   Float    @default(0.5)
+  timestamp         DateTime @default(now())
+  
+  @@unique([conversationId, turnNumber])
+  @@index([conversationId])
+  @@index([timestamp])
+  @@map("conversation_turns")
+}
+
+// Semantic checkpoints (compressed history every 50 turns)
+model SemanticCheckpoints {
+  id                  Int      @id @default(autoincrement())
+  conversationId      String
+  checkpointNumber    Int
+  startTurn          Int
+  endTurn            Int
+  summaryClaims      String[] // Array of 3-5 key claims from this range
+  summaryEmbeddings  Bytes?   // Compressed embeddings for fast search
+  createdAt          DateTime @default(now())
+  
+  @@unique([conversationId, checkpointNumber])
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("semantic_checkpoints")
+}
+
+// ============ PHASE 1 FIX #3: CONFIDENCE TRACKING ============
+
+// Track confidence markers across turns (for sycophancy detection)
+model ConfidenceMarkings {
+  id              Int      @id @default(autoincrement())
+  conversationId  String
+  turnNumber      Int
+  claim           String   @db.Text
+  confidenceLevel String   // "HIGH", "MEDIUM", "LOW"
+  confidenceScore Float    // 0.9, 0.7, 0.4
+  marker          String   // "I know", "maybe", etc
+  userChallenged  Boolean  @default(false)
+  timestamp       DateTime @default(now())
+  
+  @@index([conversationId])
+  @@index([turnNumber])
+  @@map("confidence_markings")
+}
+
 // ============ PHASE 3 EPIC 4: LICENSING & SUBSCRIPTION MODELS ============
 
 // User accounts with subscription management

@@ -284,84 +284,115 @@ export async function verifyClaimAgainstWikipedia(
 
 /**
  * Check Wikidata for structured fact verification
+ * With 403 rate-limit handling and exponential backoff
  */
 export async function checkWikidataFact(claim: string): Promise<FactCheckResult> {
-  try {
-    const cacheKey = `wikidata:verify:${claim.substring(0, 50).toLowerCase()}`;
+  const maxRetries = 2;
+  let lastError: any = null;
 
-    // Try cache
-    if (redisClient) {
-      try {
-        const cached = await redisClient.get(cacheKey);
-        if (cached) {
-          return JSON.parse(cached);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const cacheKey = `wikidata:verify:${claim.substring(0, 50).toLowerCase()}`;
+
+      // Try cache
+      if (redisClient) {
+        try {
+          const cached = await redisClient.get(cacheKey);
+          if (cached) {
+            return JSON.parse(cached);
+          }
+        } catch (e) {
+          // Cache miss
         }
-      } catch (e) {
-        // Cache miss
       }
-    }
 
-    // Extract key components from claim
-    const subjectMatch = claim.match(/^([A-Za-z\s]+?)(?:\s+(?:was|is|are|were)\b)/i);
-    const subject = subjectMatch?.[1]?.trim();
+      // Extract key components from claim
+      const subjectMatch = claim.match(/^([A-Za-z\s]+?)(?:\s+(?:was|is|are|were)\b)/i);
+      const subject = subjectMatch?.[1]?.trim();
 
-    if (!subject) {
-      return { verified: null, confidence: 0, source: 'wikidata' };
-    }
+      if (!subject) {
+        return { verified: null, confidence: 0, source: 'wikidata' };
+      }
 
-    const startTime = Date.now();
-    const response = await axios.get(WIKIDATA_API_BASE, {
-      params: {
-        action: 'wbsearchentities',
-        search: subject,
-        language: 'en',
-        format: 'json',
-      },
-      timeout: 2000,
-    });
+      // Exponential backoff for retries
+      if (attempt > 0) {
+        const backoffMs = Math.min(100 * Math.pow(2, attempt - 1), 500);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
 
-    const responseTime = Date.now() - startTime;
-    const results = response.data?.search || [];
+      const startTime = Date.now();
+      const response = await axios.get(WIKIDATA_API_BASE, {
+        params: {
+          action: 'wbsearchentities',
+          search: subject,
+          language: 'en',
+          format: 'json',
+        },
+        timeout: 2000,
+      });
 
-    if (results.length === 0) {
-      return {
-        verified: false,
-        confidence: 0.4,
+      const responseTime = Date.now() - startTime;
+      const results = response.data?.search || [];
+
+      if (results.length === 0) {
+        return {
+          verified: false,
+          confidence: 0.4,
+          source: 'wikidata',
+          evidence: 'Entity not found in Wikidata',
+        };
+      }
+
+      // Simple score based on claim structure
+      const hasDate = /\d{4}|\d{1,2}\/\d{1,2}/.test(claim);
+      const hasAction = /\b(?:founded|born|created|died|established)\b/i.test(claim);
+
+      const confidence = hasDate && hasAction ? 0.75 : hasAction ? 0.65 : 0.5;
+      const result: FactCheckResult = {
+        verified: confidence > 0.6,
+        confidence,
         source: 'wikidata',
-        evidence: 'Entity not found in Wikidata',
+        evidence: `${subject} verified in Wikidata (${responseTime.toFixed(0)}ms)`,
       };
-    }
 
-    // Simple score based on claim structure
-    const hasDate = /\d{4}|\d{1,2}\/\d{1,2}/.test(claim);
-    const hasAction = /\b(?:founded|born|created|died|established)\b/i.test(claim);
-
-    const confidence = hasDate && hasAction ? 0.75 : hasAction ? 0.65 : 0.5;
-    const result: FactCheckResult = {
-      verified: confidence > 0.6,
-      confidence,
-      source: 'wikidata',
-      evidence: `${subject} verified in Wikidata (${responseTime.toFixed(0)}ms)`,
-    };
-
-    // Cache result
-    if (redisClient) {
-      try {
-        await redisClient.setEx(cacheKey, CACHE_TTL, JSON.stringify(result));
-      } catch (e) {
-        console.warn('[Cache] Wikidata write failed');
+      // Cache result
+      if (redisClient) {
+        try {
+          await redisClient.setEx(cacheKey, CACHE_TTL, JSON.stringify(result));
+        } catch (e) {
+          console.warn('[Cache] Wikidata write failed');
+        }
       }
+
+      return result;
+    } catch (error: any) {
+      lastError = error;
+      const status = axios.isAxiosError(error) ? error.response?.status : null;
+      const errorMsg = axios.isAxiosError(error)
+        ? `Wikidata: ${status} ${error.message}`
+        : error.message;
+
+      // 403 = rate limited, retry
+      if (status === 403 && attempt < maxRetries - 1) {
+        console.warn(`⚠️ Wikidata rate limited (403), retrying... (attempt ${attempt + 1}/${maxRetries})`);
+        continue;
+      }
+
+      // 429 = too many requests, fallback
+      if (status === 429) {
+        console.warn('⚠️ Wikidata rate limit exceeded (429), falling back to heuristic');
+        return { verified: null, confidence: 0.3, source: 'wikidata', evidence: 'Rate limited' };
+      }
+
+      // Other errors, log and return null
+      console.warn('⚠️ Wikidata check failed:', errorMsg);
+      break; // Don't retry on other errors
     }
-
-    return result;
-  } catch (error: any) {
-    const errorMsg = axios.isAxiosError(error)
-      ? `Wikidata: ${error.response?.status} ${error.message}`
-      : error.message;
-
-    console.warn('⚠️ Wikidata check failed:', errorMsg);
-    return { verified: null, confidence: 0, source: 'wikidata' };
   }
+
+  // Final fallback after retries exhausted
+  console.warn('⚠️ Wikidata verification failed after retries, falling back to heuristic');
+  return { verified: null, confidence: 0, source: 'wikidata' };
 }
 
 /**

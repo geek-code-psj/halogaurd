@@ -117,7 +117,7 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
       }
 
       // Use most confident verification (prefer high confidence from either source)
-      let finalVerification = null;
+      let finalVerification: any = null;
       let hasDualVerification = false;
 
       if (jsVerification && wikidataVerification) {
@@ -126,12 +126,17 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
         finalVerification = (jsVerification.confidence >= wikidataVerification.confidence)
           ? { ...jsVerification, multiSource: true, sources: ['wikipedia', 'wikidata'] }
           : { ...wikidataVerification, multiSource: true, sources: ['wikidata', 'wikipedia'] };
-      } else {
-        finalVerification = jsVerification || wikidataVerification;
+      } else if (jsVerification) {
+        finalVerification = jsVerification;
+      } else if (wikidataVerification) {
+        finalVerification = wikidataVerification;
       }
 
+      // Type guard: ensure finalVerification is not null
+      if (!finalVerification) continue;
+
       // If claim is not verified or has low confidence
-      if (finalVerification?.verified === false) {
+      if (finalVerification.verified === false) {
         // High confidence error if both sources disagree
         const confidenceBoost = hasDualVerification ? 0.1 : 0;
         issues.push({
@@ -144,9 +149,9 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
           message: `❌ Factual claim NOT verified: "${claim.substring(0, 80)}"${hasDualVerification ? " [dual-source verified]" : ""}`,
           evidence: {
             fact: claim,
-            source: hasDualVerification ? 'Wikipedia + Wikidata' : finalVerification.source,
-            text: finalVerification.evidence || 'Claim not found in knowledge bases',
-            nliScore: finalVerification.confidence,
+            source: hasDualVerification ? 'Wikipedia + Wikidata' : (finalVerification?.source || 'Unknown'),
+            text: finalVerification?.evidence || 'Claim not found in knowledge bases',
+            nliScore: finalVerification?.confidence || 0.3,
           },
           suggestions: [
             "🔍 Verify with primary sources",
@@ -155,7 +160,7 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
             "📅 Check if claim involves recent events (training data cutoff)",
           ],
         });
-      } else if (finalVerification?.verified === null) {
+      } else if (finalVerification.verified === null || finalVerification.verified === undefined) {
         // Unknown verification (couldn't find data)
         issues.push({
           id: `tier2_unverified_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
@@ -164,10 +169,10 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
           tier: 2,
           score: 0.3,
           confidence: 0.4,
-          message: `⚠️ Claim could not be verified in knowledge bases: "${claim.substring(0, 80)}"`,
+          message: `⚠️ Claim could not be verified in knowledge bases: \"${claim.substring(0, 80)}\"`,
           evidence: {
             fact: claim,
-            source: hasDualVerification ? 'Wikipedia + Wikidata' : finalVerification?.source,
+            source: hasDualVerification ? 'Wikipedia + Wikidata' : (finalVerification?.source || 'Unknown'),
             text: "Entity or claim not found in Wikipedia/Wikidata corpus",
           },
           suggestions: [
@@ -176,9 +181,9 @@ export async function detectTier2(request: DetectionRequest): Promise<DetectionI
             "🔍 Search for the entity directly on Wikipedia",
           ],
         });
-      } else if (finalVerification?.verified === true) {
+      } else if (finalVerification.verified === true) {
         // Log verified facts for confidence tracking
-        console.debug(`[Tier2] ✅ VERIFIED claim: "${claim.substring(0, 60)}..." | Confidence: ${(finalVerification.confidence * 100).toFixed(0)}% | Sources: ${hasDualVerification ? 'Wikipedia + Wikidata' : finalVerification.source}`);
+        console.debug(`[Tier2] ✅ VERIFIED claim: "${claim.substring(0, 60)}..." | Confidence: ${(finalVerification.confidence * 100).toFixed(0)}% | Sources: ${hasDualVerification ? 'Wikipedia + Wikidata' : (finalVerification?.source || 'Unknown')}`);
       }
     }
 

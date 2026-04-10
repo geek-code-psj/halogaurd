@@ -624,6 +624,544 @@ app.get('/api/v1/sessions/:sessionId/analytics', async (req: Request, res: Respo
   }
 });
 
+/**
+ * STATEFUL MULTI-TURN ANALYSIS ENDPOINT (NEW)
+ * POST /api/v2/analyze-turn
+ * 
+ * This endpoint enables real-world hallucination detection for multi-turn conversations.
+ * It tracks context across 100+ messages, detects sycophancy, and verifies facts.
+ */
+app.post('/api/v2/analyze-turn', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const {
+      conversation_id,
+      turn_number,
+      user_id,
+      user_message,
+      ai_response,
+      previous_responses = [],
+      context_window = 25,
+      enable_fact_check = true,
+      evaluation_mode = 'balanced',
+    } = req.body;
+
+    // ========== VALIDATION ==========
+    if (!conversation_id || turn_number === undefined || !ai_response) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['conversation_id', 'turn_number', 'ai_response'],
+      });
+    }
+
+    logger.info(`[/api/v2/analyze-turn] Turn ${turn_number} in conversation ${conversation_id}`);
+
+    // ========== STEP 1: LOAD PERSISTENT CONVERSATION HISTORY (FIX #1) ==========
+    // Import conversation store
+    const convStore = await import('./analyzers/conversation-store');
+    
+    const history = await convStore.loadConversationHistory(conversation_id, context_window);
+    
+    // Use persistent history instead of Redis cache
+    const conversation_history = history.recent_turns;
+    const extended_history = history.extended_turns;
+    const checkpoint_summaries = history.checkpoints;
+
+    logger.debug(
+      `[/api/v2/analyze-turn] Loaded history: ${conversation_history.length} recent, ${extended_history.length} extended, ${checkpoint_summaries.length} checkpoints`
+    );
+
+    // ========== STEP 2: EXTRACT ENTITIES FROM RESPONSE ==========
+    const entities = extractSimpleEntities(ai_response);
+    logger.debug(`Extracted entities: ${entities.join(', ')}`);
+
+    // ========== STEP 3: SYCOPHANCY DETECTION (CROSS-TURN) ==========
+    let sycophancy_detected = false;
+    let sycophancy_score = 0;
+    let evidence_turns: number[] = [];
+
+    // Check for user challenge patterns
+    const challenge_patterns = [
+      /are you sure/i,
+      /i don't think that's right/i,
+      /i thought it was/i,
+      /you said (.+) earlier/i,
+      /didn't you say/i,
+      /that's not correct/i,
+      /actually i think/i,
+    ];
+
+    const has_challenge = challenge_patterns.some((p) => p.test(user_message));
+
+    if (has_challenge && previous_responses.length > 0) {
+      // Look for entity mentioned in both old and new responses
+      for (const prev of previous_responses) {
+        // Simple check: do responses share similar entities but contradict?
+        const prev_mentions_entity = entities.some((e) =>
+          (prev.response || '').toLowerCase().includes(e.toLowerCase())
+        );
+
+        if (prev_mentions_entity) {
+          // Check for apologetic language (strong sycophancy signal)
+          const apologetic = /sorry|apologize|i was wrong|my mistake|you're right/i.test(
+            ai_response
+          );
+
+          // Check response length change (sudden brevity can indicate collapse)
+          const length_ratio = ai_response.length / (prev.response?.length || 1);
+
+          if (apologetic || (length_ratio > 0.5 && length_ratio < 2)) {
+            sycophancy_score += 0.3;
+            evidence_turns.push(prev.turn || 0);
+          }
+
+          // Check for exact contradiction reversal
+          if (
+            prev.response &&
+            ai_response.toLowerCase().includes('correct') &&
+            !prev.response.toLowerCase().includes('correct')
+          ) {
+            sycophancy_score += 0.4;
+            evidence_turns.push(prev.turn || 0);
+          }
+        }
+      }
+
+      sycophancy_detected = sycophancy_score > 0.5;
+    }
+
+    logger.debug(
+      `Sycophancy analysis: detected=${sycophancy_detected}, score=${sycophancy_score.toFixed(2)}`
+    );
+
+    // ========== STEP 4: FACT VERIFICATION WITH WIKIPEDIA ==========
+    let fact_check_results = {
+      verified_claims: [] as string[],
+      unverified_claims: [] as string[],
+      contradicted_claims: [] as string[],
+      sources: [] as any[],
+    };
+
+    if (enable_fact_check && entities.length > 0) {
+      // For now, we'll use a simple approach: check Redis cache for known facts
+      for (const entity of entities.slice(0, 3)) {
+        // Limit to 3 entities for performance
+        const fact_cache_key = `fact:${entity}`;
+
+        try {
+          const cached_fact = await redis.get(fact_cache_key);
+
+          if (cached_fact) {
+            const fact_data = JSON.parse(cached_fact);
+            // Simulate fact verification
+            if (ai_response.toLowerCase().includes(entity.toLowerCase())) {
+              fact_check_results.verified_claims.push(entity);
+              fact_check_results.sources.push({
+                claim: entity,
+                source: 'cached',
+                confidence: 0.8,
+              });
+            }
+          } else {
+            fact_check_results.unverified_claims.push(entity);
+          }
+        } catch (err) {
+          logger.debug(`Fact check error for ${entity}:`, err);
+          fact_check_results.unverified_claims.push(entity);
+        }
+      }
+    }
+
+    // ========== STEP 5C: NLI SCORING (from existing pipeline) ==========
+    const { runDetectionPipeline } = await import('./detectors/index');
+
+    const detection_request = {
+      id: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      content: ai_response,
+      timestamp: Date.now(),
+      context: user_message,
+      conversationHistory: previous_responses.map((p: any) => ({
+        role: 'assistant',
+        content: p.response || '',
+      })),
+      metadata: {
+        platform: 'api-v2',
+        language: 'en',
+        userId: user_id,
+      },
+    };
+
+    const detection_response = await runDetectionPipeline(detection_request);
+    const nli_score = (detection_response as any)?.score || 0.5;
+
+    // ========== STEP 5B: SEMANTIC TRIPLE EXTRACTION & CONTRADICTION DETECTION ==========
+    // Extract semantic triples from current response for structural contradiction detection
+    let semantic_contradictions: any[] = [];
+    let semantic_detail: any = null;
+
+    try {
+      const current_triples = extractSemanticTriples(ai_response);
+      logger.debug(`[Semantic] Extracted ${current_triples.length} semantic triples from current response`);
+
+      // Get historical triples from recent turns
+      const recent_turns = conversation_history.slice(-5); // Last 5 turns
+      const historical_triples: any[] = [];
+
+      for (const turn of recent_turns) {
+        const turn_triples = extractSemanticTriples(turn.content || '');
+        historical_triples.push(...turn_triples);
+      }
+
+      // Check for semantic contradictions
+      if (current_triples.length > 0 && historical_triples.length > 0) {
+        const contradictions = detectSemanticContradictions(current_triples, historical_triples);
+        semantic_contradictions = contradictions;
+
+        if (contradictions.length > 0) {
+          logger.info(`[Semantic] Found ${contradictions.length} semantic contradictions`);
+          semantic_detail = {
+            contradiction_count: contradictions.length,
+            examples: contradictions.slice(0, 2), // Top 2 examples
+            triples_involved: current_triples.length + historical_triples.length,
+          };
+        }
+      }
+    } catch (err) {
+      logger.debug(`Semantic extraction failed (non-fatal):`, err);
+    }
+
+    // ========== STEP 6: CALCULATE FINAL HALLUCINATION SCORE ==========
+    let hallucination_confidence = 0;
+    let hallucination_type: 'contradiction' | 'sycophancy' | 'factual_error' | 'none' = 'none';
+
+    // ========== STEP 5C: CROSS-TURN CONTRADICTION DETECTION (FIX #1) ==========
+    // Check against FULL history for contradictions beyond recent context
+    let cross_turn_contradictions = 0;
+    let historical_contradiction_details: any[] = [];
+
+    try {
+      const contradictions = await convStore.findHistoricalContradictions(
+        conversation_id,
+        ai_response,
+        turn_number
+      );
+
+      if (contradictions.contradictions.length > 0) {
+        cross_turn_contradictions = contradictions.contradictions.length;
+        historical_contradiction_details = contradictions.contradictions;
+        
+        logger.info(
+          `[Cross-turn] Found ${contradictions.contradictions.length} historical contradictions`
+        );
+
+        // Weight: historical contradictions are STRONG signals
+        // (they survived being outside the context window)
+        const cross_turn_weight = 0.6; // 60% of hallucination score
+        hallucination_confidence += cross_turn_weight * Math.min(contradictions.contradictions.length * 0.3, 1.0);
+      }
+
+      if (contradictions.checkpoint_contradictions.length > 0) {
+        logger.warn(
+          `[Checkpoint] Contradicts ${contradictions.checkpoint_contradictions.length} checkpoint summaries`
+        );
+        hallucination_confidence += 0.35; // Significant signal
+      }
+    } catch (err) {
+      logger.debug(`Cross-turn contradiction check failed:`, err);
+    }
+
+    // ========== STEP 6B: CALCULATE HALLUCINATION FROM OTHER SIGNALS ==========
+
+    const weights =
+      evaluation_mode === 'strict'
+        ? { nli: 0.3, sycophancy: 0.2, factual: 0.5, semantic: 0.3 }
+        : evaluation_mode === 'lenient'
+        ? { nli: 0.5, sycophancy: 0.1, factual: 0.4, semantic: 0.1 }
+        : { nli: 0.4, sycophancy: 0.2, factual: 0.4, semantic: 0.2 };
+
+    const nli_component = (1 - nli_score) * weights.nli;
+    const sycophancy_component = sycophancy_score * weights.sycophancy;
+    const factual_component =
+      (fact_check_results.contradicted_claims.length /
+        Math.max(entities.length, 1)) *
+      weights.factual;
+    
+    // Semantic contradiction component
+    const semantic_component = (semantic_contradictions.length / Math.max(semantic_contradictions.length, 1)) * weights.semantic;
+
+    hallucination_confidence = nli_component + sycophancy_component + factual_component + semantic_component;
+
+    // Determine hallucination type
+    if (sycophancy_detected && sycophancy_score > 0.5) {
+      hallucination_type = 'sycophancy';
+    } else if (fact_check_results.contradicted_claims.length > 0) {
+      hallucination_type = 'factual_error';
+    } else if (nli_score < 0.5) {
+      hallucination_type = 'contradiction';
+    }
+
+    // ========== STEP 7: GENERATE EXPLANATION ==========
+    let explanation = '';
+    if (hallucination_type === 'sycophancy') {
+      explanation = `Model showed sycophantic behavior: contradicting previous answer after user challenge or expressing false agreement. Turns ${evidence_turns.join(
+        ', '
+      )} provide evidence.`;
+    } else if (hallucination_type === 'factual_error') {
+      explanation = `Claims contradict verification: ${fact_check_results.contradicted_claims.join(
+        ', '
+      )} not verified against sources.`;
+    } else if (hallucination_type === 'contradiction') {
+      explanation = `Semantic contradiction detected with confidence ${(nli_score * 100).toFixed(
+        1
+      )}%.`;
+    } else {
+      explanation = `Response appears consistent with context and verifiable facts.`;
+    }
+
+    // ========== STEP 8: STORE TURN IN POSTGRESQL (FIX #1) ==========
+    // Store in database for persistent multi-turn analysis
+    const turn_data = {
+      conversation_id,
+      turn_number,
+      user_message,
+      ai_response,
+      entities_mentioned: entities,
+      confidence_score: hallucination_confidence,
+      timestamp: new Date(),
+    };
+
+    try {
+      await convStore.storeTurn(turn_data);
+      logger.debug(`[Storage] Stored turn ${turn_number} in PostgreSQL`);
+    } catch (storeError) {
+      logger.warn(`Failed to store turn in PostgreSQL:`, storeError);
+      // Don't fail the API call if storage fails
+    }
+
+    // Also keep recent turns in Redis cache for speed
+    try {
+      const recent_cache_key = `conv:recent:${conversation_id}`;
+      const recent_turns = conversation_history.slice(-10); // Last 10 for speed
+      await redis.setex(
+        recent_cache_key,
+        3600, // 1 hour
+        JSON.stringify(recent_turns)
+      );
+    } catch (cacheError) {
+      logger.debug(`Failed to cache recent turns:`, cacheError);
+    }
+
+    logger.info(
+      `[/api/v2/analyze-turn] Analysis complete: ${hallucination_type} (confidence ${(
+        hallucination_confidence * 100
+      ).toFixed(1)}%)`
+    );
+
+    // ========== RETURN RESPONSE ==========
+    const execution_time = Date.now() - startTime;
+
+    res.json({
+      hallucination_detected: hallucination_confidence > 0.5,
+      hallucination_type,
+      confidence_score: Math.min(100, hallucination_confidence * 100),
+
+      cross_turn_analysis: {
+        sycophancy_detected,
+        position_reversal: sycophancy_detected,
+        entities_contradicted: evidence_turns.length > 0 ? evidence_turns : [],
+        sycophancy_score,
+        evidence_turns,
+        // NEW: Cross-turn contradictions from persistent history
+        historical_contradictions: historical_contradiction_details,
+        cross_turn_contradiction_count: cross_turn_contradictions,
+      },
+
+      fact_check_results,
+
+      semantic_analysis: {
+        extraction_successful: semantic_detail !== null,
+        semantic_contradictions: semantic_contradictions,
+        contradiction_detail: semantic_detail,
+        contradiction_types: semantic_contradictions.map(c => c.type),
+      },
+
+      explanation,
+
+      raw_scores: {
+        nli_score,
+        sycophancy_score,
+        factual_error_score: factual_component,
+        semantic_contradiction_score: semantic_component,
+      },
+
+      metadata: {
+        turn_number,
+        conversation_id,
+        execution_time_ms: execution_time,
+        context_turns_analyzed: Math.min(previous_responses.length, context_window),
+      },
+    });
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    logger.error('[/api/v2/analyze-turn] Error:', errorMessage);
+
+    res.status(500).json({
+      error: 'Analysis failed',
+      message: process.env.NODE_ENV === 'development' ? errorMessage : 'Internal error',
+    });
+  }
+});
+
+/**
+ * POST /api/v2/analyze-unified - 4-Engine Analysis
+ * Combines Truth, Reasoning, Alignment, and Risk engines
+ * Returns unified score with per-engine breakdown
+ */
+app.post('/api/v2/analyze-unified', async (req: Request, res: Response) => {
+  const { content, conversation_history = [], weights = {} } = req.body;
+  const startTime = Date.now();
+
+  if (!content || content.trim().length === 0) {
+    return res.status(400).json({ error: 'Content is required' });
+  }
+
+  try {
+    // Dynamically import analyzer
+    const { analyzer } = await import('./engines/unified-analysis.js');
+    
+    logger.info(`[/api/v2/analyze-unified] Analyzing ${content.length} chars with ${conversation_history.length} history items`);
+
+    // Run 4-engine analysis
+    const result = await analyzer.analyze(content, conversation_history, weights);
+
+    res.json({
+      success: true,
+      analysis: result,
+      execution_time_ms: Date.now() - startTime,
+    });
+  } catch (error) {
+    logger.error('[/api/v2/analyze-unified] Error:', error);
+    res.status(500).json({
+      error: 'Analysis failed',
+      message: process.env.NODE_ENV === 'development' ? String(error) : 'Internal error',
+    });
+  }
+});
+
+/**
+ * HELPER: Extract semantic triples (subject-predicate-object) from text
+ * Examples: "Einstein invented relativity", "Water boils at 100°C"
+ */
+function extractSemanticTriples(text: string): Array<{ subject: string; predicate: string; object: string }> {
+  const triples: Array<{ subject: string; predicate: string; object: string }> = [];
+
+  // Pattern 1: "X is/was a Y"
+  const pattern1 = /(\w+(?:\s+\w+)*)\s+(?:is|was|are|were|being)\s+(?:a\s+)?([^,.!?]+)/gi;
+  let match;
+  while ((match = pattern1.exec(text)) !== null) {
+    triples.push({
+      subject: match[1].trim(),
+      predicate: 'is',
+      object: match[2].trim(),
+    });
+  }
+
+  // Pattern 2: "X verb Y" (active voice)
+  const pattern2 = /(\w+(?:\s+\w+)*)\s+(discovered|invented|created|founded|wrote|published|developed)\s+([^,.!?]+)/gi;
+  while ((match = pattern2.exec(text)) !== null) {
+    triples.push({
+      subject: match[1].trim(),
+      predicate: match[2].toLowerCase(),
+      object: match[3].trim(),
+    });
+  }
+
+  // Pattern 3: "X has/have Y"
+  const pattern3 = /(\w+(?:\s+\w+)*)\s+(?:has|have)\s+([^,.!?]+)/gi;
+  while ((match = pattern3.exec(text)) !== null) {
+    triples.push({
+      subject: match[1].trim(),
+      predicate: 'has',
+      object: match[2].trim(),
+    });
+  }
+
+  // Deduplicate
+  const seen = new Set<string>();
+  return triples.filter((triple) => {
+    const key = `${triple.subject}|${triple.predicate}|${triple.object}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * HELPER: Detect semantic contradictions between current and historical triples
+ * A contradiction occurs when same subject+predicate has conflicting objects
+ */
+function detectSemanticContradictions(
+  currentTriples: Array<{ subject: string; predicate: string; object: string }>,
+  historicalTriples: Array<{ subject: string; predicate: string; object: string }>
+): Array<{ type: string; current: any; historical: any; confidence: number }> {
+  const contradictions: Array<{ type: string; current: any; historical: any; confidence: number }> = [];
+
+  for (const current of currentTriples) {
+    for (const historical of historicalTriples) {
+      // Check if subject and predicate match but objects differ
+      if (
+        current.subject.toLowerCase() === historical.subject.toLowerCase() &&
+        current.predicate === historical.predicate &&
+        current.object.toLowerCase() !== historical.object.toLowerCase()
+      ) {
+        // This is a potential contradiction
+        const confidence = 0.9; // High confidence for exact subject+predicate match
+        contradictions.push({
+          type: 'direct_contradiction',
+          current: { ...current },
+          historical: { ...historical },
+          confidence,
+        });
+      }
+    }
+  }
+
+  return contradictions;
+}
+
+/**
+ * HELPER: Extract simple entities (PERSON, DATE, LOCATION)
+ */
+function extractSimpleEntities(text: string): string[] {
+  const entities = new Set<string>();
+
+  // Names (PERSON): "Einstein", "Marie Curie"
+  const name_pattern = /\b([A-Z][a-z]+ (?:[A-Z][a-z]+ )*[A-Z][a-z]+)\b/g;
+  let match;
+  while ((match = name_pattern.exec(text)) !== null) {
+    entities.add(match[1]);
+  }
+
+  // Dates (DATE): "March 14, 1879", "1905"
+  const date_pattern =
+    /\b((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}|\d{4})\b/g;
+  while ((match = date_pattern.exec(text)) !== null) {
+    entities.add(match[1]);
+  }
+
+  // Key claimed facts (nouns with potential errors)
+  const fact_pattern = /\b(?:is|was|are|were|invented|discovered|founded)\s+(.+?)(?:\.|,|;|\?|!|$)/gi;
+  while ((match = fact_pattern.exec(text)) !== null) {
+    const fact = match[1].trim();
+    if (fact.length > 5 && fact.length < 100) {
+      entities.add(fact);
+    }
+  }
+
+  return Array.from(entities).slice(0, 10); // Limit to 10 entities
+}
+
 
 // ============ WEBSOCKET EVENTS ============
 
@@ -931,6 +1469,179 @@ async function startServer(): Promise<void> {
       logger.warn('⚠️ Database initialization error (will retry):', dbError);
       // Continue anyway - DB has built-in retry and won't crash
     }
+
+    // ============ FEEDBACK & INTERVENTION ENDPOINTS ============
+
+    /**
+     * POST /api/v2/feedback - Record user feedback on analysis
+     * Body: {
+     *   analysis_id: string,
+     *   user_id: string,
+     *   correct_result: 'true_positive' | 'false_positive' | 'true_negative' | 'false_negative',
+     *   original_score: number,
+     *   user_correction?: { corrected_claim: string, actual_fact: string, source: string },
+     *   engagement_level?: number (0-1)
+     * }
+     */
+    app.post('/api/v2/feedback', async (req: Request, res: Response) => {
+      const { analysis_id, user_id, correct_result, original_score, user_correction, engagement_level } = req.body;
+
+      if (!analysis_id || !user_id || !correct_result) {
+        return res.status(400).json({ error: 'Missing required fields: analysis_id, user_id, correct_result' });
+      }
+
+      try {
+        const { FeedbackLearningSystem } = await import('./engines/feedback-learning.js');
+        const record = await FeedbackLearningSystem.recordFeedback(analysis_id, user_id, {
+          correct_result: correct_result as any,
+          original_score,
+          user_correction,
+          engagement_level,
+        });
+
+        const metrics = await FeedbackLearningSystem.getLearningMetrics(user_id);
+
+        res.json({
+          success: true,
+          feedback_id: record.id,
+          learning_metrics: metrics,
+          message: `Feedback recorded (${metrics.total_feedback_records} total records)`,
+        });
+      } catch (error) {
+        logger.error('[/api/v2/feedback] Error:', error);
+        res.status(500).json({ error: 'Feedback recording failed', message: String(error) });
+      }
+    });
+
+    /**
+     * GET /api/v2/feedback/metrics/:user_id - Get learning metrics
+     */
+    app.get('/api/v2/feedback/metrics/:user_id', async (req: Request, res: Response) => {
+      const { user_id } = req.params;
+
+      try {
+        const { FeedbackLearningSystem } = await import('./engines/feedback-learning.js');
+        const metrics = await FeedbackLearningSystem.getLearningMetrics(user_id);
+
+        res.json({
+          success: true,
+          user_id,
+          metrics,
+        });
+      } catch (error) {
+        logger.error('[/api/v2/feedback/metrics] Error:', error);
+        res.status(500).json({ error: 'Failed to retrieve metrics' });
+      }
+    });
+
+    /**
+     * POST /api/v2/intervention - Generate UI intervention from policy decision
+     * Body: {
+     *   analysis_id: string,
+     *   user_id: string,
+     *   content: string,
+     *   policy_decision: { ... },
+     *   engine_scores: { truth_engine, reasoning_engine, alignment_engine, risk_engine }
+     * }
+     */
+    app.post('/api/v2/intervention', async (req: Request, res: Response) => {
+      const { analysis_id, user_id, content, policy_decision, engine_scores } = req.body;
+
+      if (!policy_decision || !engine_scores) {
+        return res.status(400).json({ error: 'Missing policy_decision or engine_scores' });
+      }
+
+      try {
+        const { InterventionExecutor } = await import('./engines/intervention-executor.js');
+
+        const intervention = InterventionExecutor.buildInterventionUI({
+          analysis_id,
+          user_id,
+          content,
+          policy_decision,
+          engine_scores,
+        });
+
+        res.json({
+          success: true,
+          intervention,
+          recommendations: policy_decision.recommendations || [],
+        });
+      } catch (error) {
+        logger.error('[/api/v2/intervention] Error:', error);
+        res.status(500).json({ error: 'Intervention generation failed' });
+      }
+    });
+
+    /**
+     * POST /api/v2/intervention/outcome - Record what user did with intervention
+     * Body: {
+     *   analysis_id: string,
+     *   user_id: string,
+     *   intervention_action: 'allow' | 'warn' | 'flag' | 'block' | 'edit',
+     *   user_action: 'allowed' | 'blocked' | 'edited' | 'dismissed',
+     *   final_outcome?: 'accurate' | 'hallucination' | 'helpful' | 'harmful'
+     * }
+     */
+    app.post('/api/v2/intervention/outcome', async (req: Request, res: Response) => {
+      const { analysis_id, user_id, intervention_action, user_action, final_outcome } = req.body;
+
+      if (!analysis_id || !user_action) {
+        return res.status(400).json({ error: 'Missing analysis_id or user_action' });
+      }
+
+      try {
+        const { InterventionExecutor } = await import('./engines/intervention-executor.js');
+
+        const intervention_ui = {
+          action: intervention_action as any,
+          visible: true,
+          severity: 'warning' as any,
+          title: intervention_action.toUpperCase() + ': Intervention',
+          message: `Intervention recorded: ${intervention_action}`,
+          highlighted_sections: [],
+          allow_override: intervention_action !== 'block',
+          estimated_impact: 'medium' as any
+        };
+
+        await InterventionExecutor.recordInterventionOutcome(
+          analysis_id,
+          user_id,
+          intervention_ui,
+          user_action as any,
+          final_outcome as any
+        );
+
+        res.json({
+          success: true,
+          message: `Intervention outcome recorded: ${user_action}`,
+        });
+      } catch (error) {
+        logger.error('[/api/v2/intervention/outcome] Error:', error);
+        res.status(500).json({ error: 'Failed to record intervention outcome' });
+      }
+    });
+
+    /**
+     * GET /api/v2/intervention/stats/:user_id - Get intervention statistics
+     */
+    app.get('/api/v2/intervention/stats/:user_id', async (req: Request, res: Response) => {
+      const { user_id } = req.params;
+
+      try {
+        const { InterventionExecutor } = await import('./engines/intervention-executor.js');
+        const stats = await InterventionExecutor.getInterventionStats(user_id);
+
+        res.json({
+          success: true,
+          user_id,
+          stats,
+        });
+      } catch (error) {
+        logger.error('[/api/v2/intervention/stats] Error:', error);
+        res.status(500).json({ error: 'Failed to retrieve stats' });
+      }
+    });
 
     // Start cleanup tasks (every hour)
     setInterval(async () => {

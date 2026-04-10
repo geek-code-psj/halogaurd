@@ -152,13 +152,27 @@ export class BackendService {
    */
   private fetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
     const url = `${this.apiUrl}${endpoint}`;
-    const headers: HeadersInit = {
+    const headers = new Headers({
       'Content-Type': 'application/json',
-      ...options.headers,
-    };
+    });
+
+    // Merge existing headers
+    if (options.headers) {
+      if (options.headers instanceof Headers) {
+        options.headers.forEach((value, key) => {
+          headers.set(key, value);
+        });
+      } else if (typeof options.headers === 'object') {
+        Object.entries(options.headers).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            headers.set(key, String(value));
+          }
+        });
+      }
+    }
 
     if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
+      headers.set('Authorization', `Bearer ${this.apiKey}`);
     }
 
     const controller = new AbortController();

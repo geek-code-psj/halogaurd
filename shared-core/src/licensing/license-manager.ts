@@ -178,12 +178,8 @@ export class LicenseManager {
           {
             price_data: {
               currency: plan.currency.toLowerCase(),
-              product_data: {
-                name: plan.name,
-                description: plan.features.join(', '),
-              },
               recurring: {
-                interval: plan.interval,
+                interval: plan.interval as 'day' | 'month' | 'week' | 'year',
               },
               unit_amount: Math.round(plan.price * 100), // Stripe uses cents
             },
@@ -191,7 +187,7 @@ export class LicenseManager {
         ],
         payment_behavior: 'default_incomplete',
         expand: ['latest_invoice.payment_intent'],
-      });
+      } as any);
 
       logger.info(`[License] Created subscription ${subscription.id} for ${userId}`);
 
@@ -214,7 +210,7 @@ export class LicenseManager {
     }
 
     try {
-      await this.stripe.subscriptions.del(stripeSubscriptionId);
+      await (this.stripe.subscriptions as any).del(stripeSubscriptionId);
       logger.info(`[License] Cancelled subscription ${stripeSubscriptionId}`);
     } catch (error) {
       logger.error('[License] Failed to cancel subscription:', error);

@@ -1,6 +1,7 @@
 /**
  * HaloGuard - Fetch Interceptor
  * Intercepts fetch requests to detect AI responses
+ * ENHANCED: Multi-turn conversation tracking with sycophancy & fact-checking
  */
 
 import { DetectionRequest, DetectionResponse } from '../types';
@@ -11,6 +12,9 @@ import { PlatformDetector } from '../utils/platform';
 export class FetchInterceptor {
   private static originalFetch = window.fetch;
   private static isInitialized = false;
+  private static conversationHistory: Map<string, any[]> = new Map();
+  private static turnNumbers: Map<string, number> = new Map();
+  private static USER_ID = CryptoUtils.generateRequestId(); // Stable user tracking
 
   /**
    * Initialize fetch interception

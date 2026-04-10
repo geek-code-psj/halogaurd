@@ -96,7 +96,8 @@ export class StripeWebhookHandler {
 
     const customerId = subscription.customer as string;
     const customer = await this.stripe.customers.retrieve(customerId);
-    const userId = (customer.metadata as any)?.userId;
+    const customerData = customer as Stripe.Customer;
+    const userId = (customerData.metadata as any)?.userId;
 
     if (!userId) {
       logger.warn(`[Webhook] No userId found for customer ${customerId}`);
@@ -139,7 +140,8 @@ export class StripeWebhookHandler {
 
     const customerId = subscription.customer as string;
     const customer = await this.stripe.customers.retrieve(customerId);
-    const userId = (customer.metadata as any)?.userId;
+    const customerData = customer as Stripe.Customer;
+    const userId = (customerData.metadata as any)?.userId;
 
     if (!userId) {
       logger.warn(`[Webhook] No userId found for customer ${customerId}`);
@@ -189,7 +191,8 @@ export class StripeWebhookHandler {
 
     const customerId = subscription.customer as string;
     const customer = await this.stripe.customers.retrieve(customerId);
-    const userId = (customer.metadata as any)?.userId;
+    const customerData = customer as Stripe.Customer;
+    const userId = (customerData.metadata as any)?.userId;
 
     if (!userId) {
       logger.warn(`[Webhook] No userId found for customer ${customerId}`);
