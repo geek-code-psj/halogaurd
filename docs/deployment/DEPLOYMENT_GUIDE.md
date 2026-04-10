@@ -411,9 +411,11 @@ In Railway dashboard:
 # Once deployed, you'll get a live URL
 
 # Test backend health
-curl https://your-railway-url/api/health
+curl https://your-railway-url/health
 
 # Should return: HTTP 200 with health status
+# For detailed readiness check:
+curl https://your-railway-url/ready
 ```
 
 #### Continuous Deployment
@@ -490,7 +492,10 @@ docker-compose exec backend npm run seed
 
 ```bash
 # Test backend health
-curl http://localhost:3000/api/health
+curl http://localhost:3000/health
+
+# Detailed readiness check
+curl http://localhost:3000/ready
 
 # Check logs
 docker-compose logs backend
@@ -562,8 +567,12 @@ npm install @geek-code-psj/haloguard-sdk
 node -e "const sdk = require('@geek-code-psj/haloguard-sdk'); console.log(sdk)"
 
 # 4. Backend Health
-curl https://your-deployment-url/api/health
-# Expected: HTTP 200 with { "status": "ok" }
+curl https://your-deployment-url/health
+# Expected: HTTP 200 with { "status": "healthy" }
+
+# Readiness check (includes Redis, Database, BullMQ status)
+curl https://your-deployment-url/ready
+# Expected: HTTP 200 with { "status": "ready", "checks": {...} }
 
 # 5. Licensing System
 curl -X GET "https://your-deployment-url/api/v1/subscription" \
