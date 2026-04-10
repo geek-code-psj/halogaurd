@@ -227,7 +227,7 @@ export class StripeWebhookHandler {
 
     const customerId = invoice.customer as string;
     const customer = await this.stripe.customers.retrieve(customerId);
-    const userId = (customer.metadata as any)?.userId;
+    const userId = ((customer as any).metadata as any)?.userId;
 
     if (!userId) {
       logger.warn(`[Webhook] No userId found for customer ${customerId}`);
@@ -238,6 +238,7 @@ export class StripeWebhookHandler {
     const description = invoice.lines.data[0]?.description || 'Subscription Payment';
     const amount = invoice.total ? invoice.total / 100 : 0; // Stripe amounts are in cents
     const currency = invoice.currency?.toUpperCase() || 'USD';
+    const paidAt = (invoice as any).paid_at ? new Date((invoice as any).paid_at * 1000) : new Date();
 
     await prisma.billingHistory.create({
       data: {
@@ -250,7 +251,7 @@ export class StripeWebhookHandler {
         stripePaymentIntentId: invoice.payment_intent as string,
         billingPeriodStart: new Date(invoice.period_start * 1000),
         billingPeriodEnd: new Date(invoice.period_end * 1000),
-        paidAt: invoice.paid_at ? new Date(invoice.paid_at * 1000) : new Date(),
+        paidAt,
       },
     });
 
@@ -271,7 +272,7 @@ export class StripeWebhookHandler {
 
     const customerId = invoice.customer as string;
     const customer = await this.stripe.customers.retrieve(customerId);
-    const userId = (customer.metadata as any)?.userId;
+    const userId = ((customer as any).metadata as any)?.userId;
 
     if (!userId) {
       logger.warn(`[Webhook] No userId found for customer ${customerId}`);
@@ -395,13 +396,13 @@ export function testWebhookHandler(apiKey: string, webhookSecret: string): void 
         object: 'subscription',
         customer: 'cus_test',
         status: 'active',
-      },
+      } as any,
     },
     request: null,
     livemode: false,
     pending_webhooks: 0,
-    api_version: '2023-10-16',
-  };
+    api_version: '2024-04-10',
+  } as any;
 
   logger.info('[Webhook] Testing webhook handler...');
   handler.handleEvent(testEvent).catch((error) => {

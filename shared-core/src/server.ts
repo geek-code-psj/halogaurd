@@ -305,15 +305,21 @@ app.post('/api/v1/test-analyze', testAnalyzeHandler);
 app.post('/api/v1/analyze', async (req: Request, res: Response) => {
   const { content, model, context, conversationHistory, metadata, sessionId } = req.body;
 
-  console.log('[/api/v1/analyze] Request received:', { 
+  console.log('[/api/v1/analyze] Request received - DETAILED:', { 
     hasContent: !!content, 
-    contentLength: content?.length,
+    contentLength: content?.length || 0,
+    contentPreview: content?.substring(0, 100) || 'MISSING',
     model,
     hasMetadata: !!metadata,
+    requestBodySize: JSON.stringify(req.body).length,
+    rawContentType: req.headers['content-type'],
   });
+
+  logger.info(`[/api/v1/analyze] Received: content length=${content?.length || 0}, model=${model}`);
 
   if (!content || content.trim().length === 0) {
     console.log('[/api/v1/analyze] Validation failed: no content');
+    logger.warn('[/api/v1/analyze] No content in request');
     return res.status(400).json({ error: 'Content is required' });
   }
 

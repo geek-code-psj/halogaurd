@@ -125,7 +125,7 @@ export class KnowledgeBaseManager {
     }
 
     try {
-      const chunks = [];
+      const chunks: VectorRecord[][] = [];
       for (let i = 0; i < records.length; i += 100) {
         chunks.push(records.slice(i, i + 100));
       }

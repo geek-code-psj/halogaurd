@@ -216,7 +216,7 @@ class ReasoningEngine {
       }
 
       // Check 3: Missing dependencies
-      const missing_deps = [];
+      const missing_deps: string[] = [];
       if (content.includes('React.') && !content.match(/import\s+.*React/i)) {
         missing_deps.push('React');
       }

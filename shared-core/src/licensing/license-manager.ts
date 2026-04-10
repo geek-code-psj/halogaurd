@@ -347,16 +347,15 @@ export class LicenseManager {
                 name: SUBSCRIPTION_PLANS[tier].name,
               },
               recurring: {
-                interval: SUBSCRIPTION_PLANS[tier].interval,
+                interval: SUBSCRIPTION_PLANS[tier].interval as any,
               },
               unit_amount: Math.round(SUBSCRIPTION_PLANS[tier].price * 100),
             },
             quantity: 1,
-          },
+          } as any,
         ],
         automatic_tax: { enabled: true },
-        customer_email: email,
-      });
+      } as any);
 
       logger.info(`[License] Generated payment link for ${tier}`);
       return link.url || '';

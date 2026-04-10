@@ -8,13 +8,14 @@
 
 // ===== Inlined API Client =====
 const BACKEND_URL = 'https://halogaurd-production.up.railway.app';
-const API_ENDPOINT = `${BACKEND_URL}/api/v1/test-analyze`;
+const API_ENDPOINT = `${BACKEND_URL}/api/v1/analyze`;
 
 class HaloGuardAPI {
   static async analyzePage(request: any) {
     try {
       console.log('[HaloGuard] API endpoint:', API_ENDPOINT);
-      console.log('[HaloGuard] Request:', { content: request.text?.substring(0, 100), url: request.url });
+      console.log('[HaloGuard] Full content length:', request.text?.length || 0, 'chars');
+      console.log('[HaloGuard] Request preview:', { content: request.text?.substring(0, 100), url: request.url });
       
       const requestBody = JSON.stringify({
         content: request.text,
@@ -26,6 +27,7 @@ class HaloGuardAPI {
         },
       });
 
+      console.log('[HaloGuard] Request body size:', requestBody.length, 'bytes');
       console.log('[HaloGuard] Sending fetch...');
       
       const response = await fetch(API_ENDPOINT, {
@@ -46,6 +48,8 @@ class HaloGuardAPI {
       }
 
       const data = await response.json();
+      console.log('[HaloGuard] Backend received content length:', data.execution_time_ms || 'N/A');
+      console.log('[HaloGuard] Full backend response:', JSON.stringify(data).substring(0, 200));
       console.log('[HaloGuard] Success');
       
       return {
