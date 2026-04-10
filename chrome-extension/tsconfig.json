@@ -15,6 +15,7 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "noUncheckedIndexedAccess": true,
+    "allowSyntheticDefaultImports": true,
     "types": ["chrome"]
   },
   "include": ["src/**/*"],

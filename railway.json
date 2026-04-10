@@ -19,6 +19,7 @@
   "env": {
     "NODE_ENV": "production",
     "PORT": "3000",
-    "LOG_LEVEL": "info"
+    "LOG_LEVEL": "info",
+    "API_URL": "https://halogaurd-production.up.railway.app"
   }
 }
