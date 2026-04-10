@@ -245,11 +245,14 @@ app.get('/ready', async (req: Request, res: Response) => {
 
 /**
  * Test/Fallback Analysis Endpoint
+ * GET /api/v1/test-analyze?content=...
  * POST /api/v1/test-analyze
  * Returns mock analysis data for testing
  */
-app.post('/api/v1/test-analyze', async (req: Request, res: Response) => {
-  const { content, model, metadata } = req.body;
+const testAnalyzeHandler = async (req: Request, res: Response) => {
+  const { content, model, metadata } = req.method === 'GET' 
+    ? { content: req.query.content as string, model: req.query.model as string, metadata: {} } 
+    : req.body;
   
   if (!content || content.trim().length === 0) {
     return res.status(400).json({ error: 'Content is required' });
@@ -288,7 +291,11 @@ app.post('/api/v1/test-analyze', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Test analysis failed', message: String(error) });
   }
-});
+};
+
+// Accept both GET and POST for testing
+app.get('/api/v1/test-analyze', testAnalyzeHandler);
+app.post('/api/v1/test-analyze', testAnalyzeHandler);
 
 /**
  * Analysis endpoint (synchronous Tiers 0–3)
